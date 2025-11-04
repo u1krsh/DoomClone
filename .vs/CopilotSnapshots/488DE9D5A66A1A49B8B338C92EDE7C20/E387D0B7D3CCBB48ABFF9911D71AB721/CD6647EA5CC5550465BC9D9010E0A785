@@ -1,4 +1,4 @@
-#include <stdio.h>
+﻿#include <stdio.h>
 #include <GL/glut.h>
 #include <math.h>
 
@@ -85,7 +85,7 @@ void draw3D() { // real sussy baka
 void display() {
 	int x, y;
 
-	if (T.fr1 - T.fr2 >= 50) { //20 fps
+	if (T.fr1 - T.fr2 >=50) { //20 fps
 		clearBackground();
 		movePl();
 		draw3D();
@@ -95,4 +95,35 @@ void display() {
 	}
 	T.fr1 = glutGet(GLUT_ELAPSED_TIME); 
 	glutPostRedisplay();
+}
+
+// Add program entry point so the linker can find `main`.
+int main(int argc, char** argv) {
+	// Initialize GLUT and create window
+	glutInit(&argc, argv);
+	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
+	glutInitWindowSize(GSLW, GSLH);
+	glutCreateWindow("Doom Test");
+
+	// Set up2D orthographic projection matching window coordinates
+	glViewport(0,0, GSLW, GSLH);
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	gluOrtho2D(0, GSLW,0, GSLH);
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+
+	// Set point size so logical pixels are visible (optional)
+	glPointSize((GLfloat)pixelScale);
+
+	// Register callbacks
+	glutDisplayFunc(display);
+
+	// Initialize frame timing
+	T.fr1 = T.fr2 = glutGet(GLUT_ELAPSED_TIME);
+
+	// Enter main loop
+	glutMainLoop();
+
+	return0;
 }
