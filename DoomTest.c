@@ -96,3 +96,12 @@ void display() {
 	T.fr1 = glutGet(GLUT_ELAPSED_TIME); 
 	glutPostRedisplay();
 }
+
+
+void KeysDown(){
+
+}
+
+int main() {
+
+}

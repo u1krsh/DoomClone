@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="DoomClone.vcxproj" Id="99c47de2-bb6f-4c58-bc77-4c0e77e83697" />
+</Solution>
