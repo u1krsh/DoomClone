@@ -3,8 +3,8 @@
 #include <math.h>
 
 #define res 1 //resolotion scale
-#define SH 160*res //screen height
-#define SW 120*res //screen width
+#define SH 120*res //screen height
+#define SW 160*res //screen width
 #define HSH SH/2 //half screen height
 #define HSW SW/2 //half screen width
 #define pixelScale  4/res //open gl pixel size
@@ -44,12 +44,12 @@ void pixel(int x, int y, int c) { //draws pixel at x,y with color c
 
 void movePl() {
 	if (K.w == 1) { printf("forward\n"); }
-	if (K.a = 1) { printf("left\n"); }
-	if (K.s = 1) { printf("backwards\n"); }
-	if (K.d = 1) { printf("right\n"); }
+	if (K.a == 1) { printf("left\n"); }
+	if (K.s == 1) { printf("backwards\n"); }
+	if (K.d == 1) { printf("right\n"); }
 
-	if (K.sr = 1) { printf("strafe right\n"); }
-	if (K.sl = 1) { printf("strafe left\n"); }
+	if (K.sr == 1) { printf("strafe right\n"); }
+	if (K.sl == 1) { printf("strafe left\n"); }
 }
 
 void clearBackground() {
@@ -98,10 +98,43 @@ void display() {
 }
 
 
-void KeysDown(){
+void KeysDown(unsigned char key, int x, int y){
+	if (key == 'w') { K.w = 1; }
+	if (key == 'a') { K.a = 1; }
+	if (key == 's') { K.s = 1; }
+	if (key == 'd') { K.d = 1; }
+	if (key == ',') { K.sl = 1; }
+	if (key == '.') { K.sr = 1; }
 
 }
 
-int main() {
+void KeysUp(unsigned char key, int x, int y) {
+	if (key == 'w') { K.w = 0; }
+	if (key == 'a') { K.a = 0; }
+	if (key == 's') { K.s = 0; }
+	if (key == 'd') { K.d = 0; }
+	if (key == ',') { K.sl = 0; }
+	if (key == '.') { K.sr = 0; }
+}
+
+void init() {
+	
+}
+
+int main(int argc, char* argv[]) {
+	glutInit(&argc, argv);
+	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
+	glutInitWindowPosition(GSLW / 2, GSLH / 2);
+	glutInitWindowSize(GSLW, GSLH);
+	glutCreateWindow("");
+	glPointSize(pixelScale); //pixel size
+	gluOrtho2D(0, GSLW, 0, GSLH); // origin
+	init();
+	glutDisplayFunc(display);
+	glutKeyboardFunc(KeysDown);
+	glutKeyboardUpFunc(KeysUp);
+	glutMainLoop();
+	return 0;
+
 
 }
