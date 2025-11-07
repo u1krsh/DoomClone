@@ -23,6 +23,18 @@ typedef struct {
 }keys;
 keys K;
 
+typedef struct {
+	float cos[360];   //cos and sin values
+	float sin[360];
+
+}math;
+math M;
+typedef struct {
+	int x, y, z; //position
+	int a;// angle of rotation
+	int l; // variable to look up and down
+}player; 
+player P;
 
 void pixel(int x, int y, int c) { //draws pixel at x,y with color c
 	int rgb[3] = {0,0,0}; // Initialize all elements to 0
@@ -43,8 +55,9 @@ void pixel(int x, int y, int c) { //draws pixel at x,y with color c
 }
 
 void movePl() {
-	if (K.w == 1) { printf("forward\n"); }
-	if (K.a == 1) { printf("left\n"); }
+	if (K.w == 1) { printf("forward\n"); P.a -= 4; if (P.a < 0) { P.a += 360; } }
+
+	if (K.a == 1) { printf("left\n");  P.a += 4; if (P.a < 0) { P.a += 360; } }
 	if (K.s == 1) { printf("backwards\n"); }
 	if (K.d == 1) { printf("right\n"); }
 
@@ -118,7 +131,13 @@ void KeysUp(unsigned char key, int x, int y) {
 }
 
 void init() {
-	
+	int x;
+	for (x = 0; x < 360; x++){
+		M.cos[x]=cos(x/3.14159*180);
+		M.sin[x]=sin(x/3.14159*180);
+	} 
+	//init playe
+	P.x = 70; P.y = -110; P.z = 20; P.a = 0; P.l = 0;
 }
 
 int main(int argc, char* argv[]) {
