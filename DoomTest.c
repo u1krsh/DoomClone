@@ -76,7 +76,43 @@ void clearBackground() {
 		}
 	}
 }
- 
+
+void clipBehindPlayer() {
+
+}
+
+void drawWall(int x1, int x2, int b1, int b2, int t1, int t2) {
+	int x, y;
+	// hold difference between bottom and top
+	int dyb = b2 - b1; // y distance from bottom line 
+	int dyt = t2 - t1; // top line
+	int dx = x2 - x1; // x distance
+	if (dx == 0) { dx = 1; } // prevent divide by zero
+	int xs = x1; //hold initial x1 staring position
+	//clipping x
+	if (x1 < 1) { x1 = 1; }
+	if (x2 < 1) { x2 = 1; }
+	if (x1 > SW - 1) { x1 = SW - 1; }
+	if (x2 > SW - 1) { x2 = SW - 1; }
+
+	//draw x vertices line
+	for (x = x1; x < x2; x++) {
+		int y1 = dyb * (x - xs + 0.5) / dx + b1; //y bottom point 
+		int y2 = dyt * (x - xs + 0.5) / dx + t1;
+		//clipping y
+		if (y1 < 1) { y1 = 1; }
+		if (y2 < 1) { y2 = 1; }
+		if (y1 > SH - 1) { y1 = SH - 1; }
+		if (y2 > SH - 1) { y2 = SH - 1; }
+		//pixel(x, y1, 0);//bottom
+		//pixel(x, y2, 0);//top
+		for (y = y1; y < y2; y++) {
+			pixel(x, y, 0);
+		}
+	
+	}
+}
+
 void draw3D() { // real sussy baka
 	int wx[4], wy[4], wz[4];// world x and y
 	float CS = M.cos[P.a]; //player cos and sin
@@ -89,23 +125,31 @@ void draw3D() { // real sussy baka
 	//world X position
 	wx[0] = x1 * CS - y1 * SN;
 	wx[1] = x2 * CS - y2 * SN;
+	wx[2] = wx[0];
+	wx[3] = wx[1];
 
 	//world Y position
 	wy[0] = x1 * SN + y1 * CS;
 	wy[1] = x2 * SN + y2 * CS;
+	wy[2] = wy[0];
+	wy[3] = wy[1];
 
 	// world Z position
-
 	wz[0] = 0 - P.z;
 	wz[1] = 0 - P.z;
+	wz[2] = wz[0] + 40;
+	wz[3] = wz[1] + 40;
 
 	//screen x y position
-	wx[0] = wx[0] * 200 / wy[0] + HSW; wy[0] = wz[0] * 200 / wy[0] + HSH;
+	wx[0] = wx[0] * 200 / wy[0] + HSW;
+	wy[0] = wz[0] * 200 / wy[0] + HSH;
 	wx[1] = wx[1] * 200 / wy[1] + HSW; wy[1] = wz[1] * 200 / wy[1] + HSH;
-
+	wx[2] = wx[2] * 200 / wy[2] + HSW; wy[2] = wz[2] * 200 / wy[2] + HSH;
+	wx[3] = wx[3] * 200 / wy[3] + HSW; wy[3] = wz[3] * 200 / wy[3] + HSH;
 	//draw points 
-	if (wx[0] > 0 && wz[0] < SW && wy[0]>0 && wy[0] < SH) { pixel(wx[0], wy[0], 0); }
-	if (wx[1] > 0 && wz[1] < SW && wy[1]>0 && wy[1] < SH) { pixel(wx[1], wy[1], 0); }
+	//if (wx[0] > 0 && wz[0] < SW && wy[0]>0 && wy[0] < SH) { pixel(wx[0], wy[0], 0); }
+	//if (wx[1] > 0 && wz[1] < SW && wy[1]>0 && wy[1] < SH) { pixel(wx[1], wy[1], 0); }
+	drawWall(wx[0], wx[1], wy[0],wy[1],wy[2],wy[3]);
 }
 
 void display() {
