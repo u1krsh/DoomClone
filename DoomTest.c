@@ -55,14 +55,17 @@ void pixel(int x, int y, int c) { //draws pixel at x,y with color c
 }
 
 void movePl() {
-	if (K.w == 1) { printf("forward\n"); P.a -= 4; if (P.a < 0) { P.a += 360; } }
+	// move player up and down
+	if (K.a == 1) { P.a -= 4; if (P.a < 0) { P.a += 360; } }
+	if (K.d == 1) { P.a += 4; if (P.a > 359) { P.a -= 360; } }
+	int dx = M.sin[P.a] * 10.0; // calculate change in x
+	int dy = M.cos[P.a] * 10.0; // calculate change in y
+	if (K.w == 1) { P.x += dx; P.y += dy; } // move forward
+	if (K.s == 1) { P.x -= dx; P.y -= dy; }
 
-	if (K.a == 1) { printf("left\n");  P.a += 4; if (P.a < 0) { P.a += 360; } }
-	if (K.s == 1) { printf("backwards\n"); }
-	if (K.d == 1) { printf("right\n"); }
-
-	if (K.sr == 1) { printf("strafe right\n"); }
-	if (K.sl == 1) { printf("strafe left\n"); }
+	//strafe left and right
+	if (K.sr == 1) { P.x += dy; P.y -= dx; }
+	if (K.sl == 1) { P.x -= dy; P.y += dx; }
 }
 
 void clearBackground() {
@@ -73,26 +76,36 @@ void clearBackground() {
 		}
 	}
 }
-
-int tick;
-
+ 
 void draw3D() { // real sussy baka
-	int x, y, c = 0;
-	for (y = 0; y < HSH; y++) {
-		for (x = 0; x < HSW; x++) {
-			pixel(x, y, c);
-			c = c + 1;
-			if (c > 6) {
-				c = 0;
-			}
-		}
-	}
+	int wx[4], wy[4], wz[4];// world x and y
+	float CS = M.cos[P.a]; //player cos and sin
+	float SN = M.sin[P.a];
 
-	tick = tick + 1;
-	if (tick > 20) {
-		tick = 0;
-	}
-	pixel(HSW, HSH + tick, 0);
+	// offset bottom two points of player
+	int x1 = 40 - P.x, y1 = 10 - P.y;
+	int x2 = 40 - P.x, y2 = 290 - P.y;
+
+	//world X position
+	wx[0] = x1 * CS - y1 * SN;
+	wx[1] = x2 * CS - y2 * SN;
+
+	//world Y position
+	wy[0] = x1 * SN + y1 * CS;
+	wy[1] = x2 * SN + y2 * CS;
+
+	// world Z position
+
+	wz[0] = 0 - P.z;
+	wz[1] = 0 - P.z;
+
+	//screen x y position
+	wx[0] = wx[0] * 200 / wy[0] + HSW; wy[0] = wz[0] * 200 / wy[0] + HSH;
+	wx[1] = wx[1] * 200 / wy[1] + HSW; wy[1] = wz[1] * 200 / wy[1] + HSH;
+
+	//draw points 
+	if (wx[0] > 0 && wz[0] < SW && wy[0]>0 && wy[0] < SH) { pixel(wx[0], wy[0], 0); }
+	if (wx[1] > 0 && wz[1] < SW && wy[1]>0 && wy[1] < SH) { pixel(wx[1], wy[1], 0); }
 }
 
 void display() {
@@ -133,8 +146,8 @@ void KeysUp(unsigned char key, int x, int y) {
 void init() {
 	int x;
 	for (x = 0; x < 360; x++){
-		M.cos[x]=cos(x/3.14159*180);
-		M.sin[x]=sin(x/3.14159*180);
+		M.cos[x]=cos(x * 3.14159 / 180);
+		M.sin[x]=sin(x * 3.14159 / 180);
 	} 
 	//init playe
 	P.x = 70; P.y = -110; P.z = 20; P.a = 0; P.l = 0;
