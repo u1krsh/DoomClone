@@ -36,6 +36,13 @@ typedef struct {
 }player; 
 player P;
 
+typedef struct {
+	int x1, y1;//bottom line point 1
+	int x2, y2;//bootom line point 2
+	int c;// wall color 
+}walls;
+walls W[30];
+
 void pixel(int x, int y, int c) { //draws pixel at x,y with color c
 	int rgb[3] = {0,0,0}; // Initialize all elements to 0
 	if (c == 0) { rgb[0] = 255; rgb[1] = 0; rgb[2] = 0; }// red
@@ -77,8 +84,14 @@ void clearBackground() {
 	}
 }
 
-void clipBehindPlayer() {
-
+void clipBehindPlayer(int *x1, int *y1, int *z1, int x2, int y2, int z2) {
+	float da = *y1;
+	float db = y2;
+	float d = da - db; if (da == 0) { d = 1; }
+	float s = da / (da - db);// intesection factor 
+	*x1 = *x1 + s * (x2 - (*x1));
+	*y1 = *y1 + s * (y2 - (*y1)); if (*y1 == 0) { *y1 = 1; }// prevents divide by 0
+	*z1 = *z1 + s * (z2 - (*z1));
 }
 
 void drawWall(int x1, int x2, int b1, int b2, int t1, int t2) {
@@ -107,7 +120,7 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2) {
 		//pixel(x, y1, 0);//bottom
 		//pixel(x, y2, 0);//top
 		for (y = y1; y < y2; y++) {
-			pixel(x, y, 0);
+			pixel(x, y, 1);
 		}
 	
 	}
@@ -139,6 +152,22 @@ void draw3D() { // real sussy baka
 	wz[1] = 0 - P.z;
 	wz[2] = wz[0] + 40;
 	wz[3] = wz[1] + 40;
+
+	//dont draw if behinde player
+	if (wy[0] < 1 && wy[1] < 1) { return; } //dont draw wall behind player
+
+	//point 1 behind player
+
+	if (wy[0] < 1) {
+		clipBehindPlayer(&wx[0], &wy[0], &wz[0], wx[1], wy[1], wz[1]);//bottom
+		clipBehindPlayer(&wx[2], &wy[2], &wz[2], wx[3], wy[3], wz[3]);// top
+	}
+
+	// point 2 behind player
+	if (wy[1] < 1) {
+		clipBehindPlayer(&wx[1], &wy[1], &wz[1], wx[0], wy[0], wz[0]);//bottom
+		clipBehindPlayer(&wx[3], &wy[3], &wz[3], wx[2], wy[2], wz[2]);// top
+	}
 
 	//screen x y position
 	wx[0] = wx[0] * 200 / wy[0] + HSW;
