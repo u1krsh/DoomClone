@@ -18,5 +18,8 @@
     <ClCompile Include="DoomTest.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Oracular_map_editor.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
