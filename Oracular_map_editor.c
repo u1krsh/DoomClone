@@ -16,14 +16,21 @@
 #include "textures/oracular_texture.h"
 #include "textures/T_00.h"
 #include "textures/T_01.h"  // Add 32x32 test texture
+#include "textures/T_02.h"
+#include "textures/T_03.h"
+#include "textures/T_04.h"
+#include "textures/T_05.h"
+#include "textures/T_06.h"
 
-int numText = 2;                          //number of textures (increased from 1 to 2)
+int numText = 7;                          //number of textures (increased from 1 to 2)
 
 int numSect = 0;                          //number of sectors
 int numWall = 0;                          //number of walls
 
-// Toggle large preview overlay
-static int g_showPreview = 0; // 0=off, 1=on
+// Toggle large preview overlay (legacy, now unused)
+//static int g_showPreview = 0; // REMOVED overlay flag
+static int previewWindow = 0; // second window id (0 = none)
+static int mainWindow = 0;    // main window id
 
 //------------------------------------------------------------------------------
 
@@ -160,6 +167,15 @@ void drawPixel(int x, int y, int r, int g, int b) //draw a pixel at x/y with rgb
     glEnd();
 }
 
+// Raw pixel (no pixelScale) for preview window
+static void drawPixelRaw(int x, int y, int r, int g, int b)
+{
+    glColor3ub(r, g, b);
+    glBegin(GL_POINTS);
+    glVertex2i(x, y);
+    glEnd();
+}
+
 void drawLine(float x1, float y1, float x2, float y2, int r, int g, int b)
 {
     int n;
@@ -189,7 +205,7 @@ void drawNumber(int nx, int ny, int n)
     }
 }
 
-// Draw a texture preview scaled to fit boxW x boxH, preserving aspect ratio with bilinear filtering
+// Draw a texture preview in an arbitrary box using drawPixel (scaled by pixelScale) for main window
 static void drawTexturePreview(int texIndex, int destX, int destY, int boxW, int boxH)
 {
     if (texIndex < 0) return;
@@ -265,6 +281,94 @@ static void drawTexturePreview(int texIndex, int destX, int destY, int boxW, int
     }
 }
 
+// Draw into separate preview window using raw pixels filling up to 512x512 while preserving aspect ratio
+static void drawTexturePreviewWindow(int texIndex, int winW, int winH)
+{
+    if (texIndex < 0) return;
+    int tw = Textures[texIndex].w;
+    int th = Textures[texIndex].h;
+    const unsigned char* data = Textures[texIndex].name;
+    if (!data || tw <= 0 || th <= 0) return;
+
+    // Fit texture preserving aspect
+    float sx = (float)winW / (float)tw;
+    float sy = (float)winH / (float)th;
+    float scale = sx < sy ? sx : sy;
+    int dvw = (int)floorf(tw * scale);
+    int dvh = (int)floorf(th * scale);
+    if (dvw < 1) dvw = 1; if (dvh < 1) dvh = 1;
+    int offx = (winW - dvw) / 2;
+    int offy = (winH - dvh) / 2;
+
+    for (int py = 0; py < dvh; ++py)
+    {
+        float v = dvh > 1 ? (float)py / (float)(dvh - 1) : 0.0f;
+        float syf = v * (float)(th - 1);
+        int y0 = (int)syf;
+        int y1 = y0 + 1; if (y1 >= th) y1 = th - 1;
+        float ay = syf - (float)y0;
+        int fy0 = (th - 1) - y0; // vertical flip
+        int fy1 = (th - 1) - y1;
+        for (int px = 0; px < dvw; ++px)
+        {
+            float u = dvw > 1 ? (float)px / (float)(dvw - 1) : 0.0f;
+            float sxf = u * (float)(tw - 1);
+            int x0 = (int)sxf;
+            int x1 = x0 + 1; if (x1 >= tw) x1 = tw - 1;
+            float ax = sxf - (float)x0;
+            int idx00 = (fy0 * tw + x0) * 3;
+            int idx10 = (fy0 * tw + x1) * 3;
+            int idx01 = (fy1 * tw + x0) * 3;
+            int idx11 = (fy1 * tw + x1) * 3;
+            float r00 = data[idx00+0], g00 = data[idx00+1], b00 = data[idx00+2];
+            float r10 = data[idx10+0], g10 = data[idx10+1], b10 = data[idx10+2];
+            float r01 = data[idx01+0], g01 = data[idx01+1], b01 = data[idx01+2];
+            float r11 = data[idx11+0], g11 = data[idx11+1], b11 = data[idx11+2];
+            float i0r = r00 + (r10 - r00) * ax;
+            float i0g = g00 + (g10 - g00) * ax;
+            float i0b = b00 + (b10 - b00) * ax;
+            float i1r = r01 + (r11 - r01) * ax;
+            float i1g = g01 + (g11 - g01) * ax;
+            float i1b = b01 + (b11 - b01) * ax;
+            int r = (int)(i0r + (i1r - i0r) * ay + 0.5f);
+            int g = (int)(i0g + (i1g - i0g) * ay + 0.5f);
+            int b = (int)(i0b + (i1b - i0b) * ay + 0.5f);
+            drawPixelRaw(offx + px, offy + py, r, g, b);
+        }
+    }
+}
+
+static void previewDisplay()
+{
+    if (previewWindow == 0) { return; }
+    glutSetWindow(previewWindow);
+    glClearColor(0.05f, 0.05f, 0.05f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    drawTexturePreviewWindow(G.wt, 512, 512);
+    glutSwapBuffers();
+    glutPostRedisplay();
+    glutSetWindow(mainWindow);
+}
+
+static void createPreviewWindow()
+{
+    if (previewWindow != 0) { return; }
+    glutInitWindowSize(512, 512);
+    glutInitWindowPosition(GLSW + 40, 40);
+    previewWindow = glutCreateWindow("Texture Preview");
+    gluOrtho2D(0, 512, 0, 512);
+    glPointSize(1); // fine-grained points
+    glutDisplayFunc(previewDisplay);
+}
+
+static void destroyPreviewWindow()
+{
+    if (previewWindow == 0) { return; }
+    glutDestroyWindow(previewWindow);
+    previewWindow = 0;
+    glutSetWindow(mainWindow);
+}
+
 void draw2D()
 {
     int s, w, x, y, c;
@@ -326,39 +430,14 @@ void draw2D()
         drawTexturePreview(G.st, 145, 105 - 24 - 8, 15, 15);
     }
 
-    // Optional large overlay preview centered (toggle with 'p')
-    if (g_showPreview)
-    {
-        int boxW = 128; // requested size
-        int boxH = 128;
-        if (boxW > SW - 8) boxW = SW - 8; // clamp to screen with small margin
-        if (boxH > SH - 8) boxH = SH - 8;
-        int destX = (SW - boxW) / 2;
-        int destY = (SH - boxH) / 2;
-        int idx = (G.selW > 0 && G.selS > 0) ? G.wt : G.wt; // show wall texture by default
-        if (Textures[idx].w > 0 && Textures[idx].h > 0)
-        {
-            // simple dark backdrop
-            for (int yy = destY - 2; yy < destY + boxH + 2; ++yy)
-            {
-                for (int xx = destX - 2; xx < destX + boxW + 2; ++xx)
-                {
-                    if (xx >= 0 && xx < SW && yy >= 0 && yy < SH)
-                        drawPixel(xx, yy, 0, 0, 0);
-                }
-            }
-            drawTexturePreview(idx, destX, destY, boxW, boxH);
-        }
-    }
-
     //draw numbers
     drawNumber(140, 90, G.wu);   //wall u
-    drawNumber(148, 90, G.wv);   //wall v
-    drawNumber(148, 66, G.ss);   //surface v
-    drawNumber(148, 58, G.z2);   //top height
-    drawNumber(148, 50, G.z1);   //bottom height
-    drawNumber(148, 26, G.selS); //sector number
-    drawNumber(148, 18, G.selW); //wall number
+    drawNumber(146, 90, G.wv);   //wall v
+    drawNumber(146, 66, G.ss);   //surface v
+    drawNumber(146, 58, G.z2);   //top height
+    drawNumber(146, 50, G.z1);   //bottom height
+    drawNumber(146, 26, G.selS); //sector number
+    drawNumber(146, 18, G.selW); //wall number
 }
 
 //darken buttons
@@ -367,7 +446,7 @@ void darken()                       //draw a pixel at x/y with rgb
 {
     int x, y, xs, xe, ys, ye;
     if (dark == 0) { return; }             //no buttons were clicked
-    if (dark == 1) { xs = 0; xe = 15; ys = 0 / G.scale; ye = 32 / G.scale; } //save button
+    if (dark == 1) { xs = -3; xe = 15; ys = 0 / G.scale; ye = 32 / G.scale; } //save button
     if (dark == 2) { xs = 0; xe = 3; ys = 96 / G.scale; ye = 128 / G.scale; } //u left
     if (dark == 3) { xs = 4; xe = 8; ys = 96 / G.scale; ye = 128 / G.scale; } //u right
     if (dark == 4) { xs = 7; xe = 11; ys = 96 / G.scale; ye = 128 / G.scale; } //v left
@@ -382,8 +461,8 @@ void darken()                       //draw a pixel at x/y with rgb
     if (dark == 13) { xs = 7; xe = 15; ys = 352 / G.scale; ye = 386 / G.scale; } //sector right
     if (dark == 14) { xs = 0; xe = 7; ys = 386 / G.scale; ye = 416 / G.scale; } //wall left
     if (dark == 15) { xs = 7; xe = 15; ys = 386 / G.scale; ye = 416 / G.scale; } //wall right
-    if (dark == 16) { xs = 0; xe = 15; ys = 416 / G.scale; ye = 448 / G.scale; } //delete
-    if (dark == 17) { xs = 0; xe = 15; ys = 448 / G.scale; ye = 480 / G.scale; } //load
+    if (dark == 16) { xs = -3; xe = 15; ys = 416 / G.scale; ye = 448 / G.scale; } //delete
+    if (dark == 17) { xs = -3; xe = 15; ys = 448 / G.scale; ye = 480 / G.scale; } //load
 
     for (y = ys; y < ye; y++)
     {
@@ -611,25 +690,28 @@ void mouseMoving(int x, int y)
 
 void KeysDown(unsigned char key, int x, int y)
 {
-    if (key == 'w' == 1) { K.w = 1; }
-    if (key == 's' == 1) { K.s = 1; }
-    if (key == 'a' == 1) { K.a = 1; }
-    if (key == 'd' == 1) { K.d = 1; }
-    if (key == 'm' == 1) { K.m = 1; }
-    if (key == ',' == 1) { K.sr = 1; }
-    if (key == '.' == 1) { K.sl = 1; }
-    // Proper comparison for preview toggle
-    if (key == 'p') { g_showPreview = !g_showPreview; }
+    if (key == 'w') { K.w = 1; }
+    if (key == 's') { K.s = 1; }
+    if (key == 'a') { K.a = 1; }
+    if (key == 'd') { K.d = 1; }
+    if (key == 'm') { K.m = 1; }
+    if (key == ',') { K.sr = 1; }
+    if (key == '.') { K.sl = 1; }
+    if (key == 'p')
+    {
+        if (previewWindow == 0) { createPreviewWindow(); }
+        else { destroyPreviewWindow(); }
+    }
 }
 void KeysUp(unsigned char key, int x, int y)
 {
-    if (key == 'w' == 1) { K.w = 0; }
-    if (key == 's' == 1) { K.s = 0; }
-    if (key == 'a' == 1) { K.a = 0; }
-    if (key == 'd' == 1) { K.d = 0; }
-    if (key == 'm' == 1) { K.m = 0; }
-    if (key == ',' == 1) { K.sr = 0; }
-    if (key == '.' == 1) { K.sl = 0; }
+    if (key == 'w') { K.w = 0; }
+    if (key == 's') { K.s = 0; }
+    if (key == 'a') { K.a = 0; }
+    if (key == 'd') { K.d = 0; }
+    if (key == 'm') { K.m = 0; }
+    if (key == ',') { K.sr = 0; }
+    if (key == '.') { K.sl = 0; }
 }
 
 void movePlayer()
@@ -706,6 +788,27 @@ void init()
     Textures[1].w = T_01_WIDTH;
     Textures[1].h = T_01_HEIGHT;
     Textures[1].name = T_01;
+
+    //56x56 texture
+    Textures[2].w = T_02_WIDTH;
+    Textures[2].h = T_02_HEIGHT;
+    Textures[2].name = T_02;
+
+    Textures[3].w = T_03_WIDTH;
+    Textures[3].h = T_03_HEIGHT;
+    Textures[3].name = T_03;
+
+    Textures[4].w = T_04_WIDTH;
+    Textures[4].h = T_04_HEIGHT;
+    Textures[4].name = T_04;
+
+    Textures[5].w = T_05_WIDTH;
+    Textures[5].h = T_05_HEIGHT;
+    Textures[5].name = T_05;
+
+    Textures[6].w = T_06_WIDTH;
+    Textures[6].h = T_06_HEIGHT;
+    Textures[6].name = T_06;
 }
 
 int main(int argc, char* argv[])
@@ -714,9 +817,9 @@ int main(int argc, char* argv[])
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
     glutInitWindowPosition(GLSW / 2, GLSH / 2);
     glutInitWindowSize(GLSW, GLSH);
-    glutCreateWindow("Oracular Mark I:u1krsh");
-    glPointSize(pixelScale);                        //pixel size
-    gluOrtho2D(0, GLSW, 0, GLSH);                      //origin bottom left
+    mainWindow = glutCreateWindow("Oracular Mark I"); // single main window
+    glPointSize(pixelScale);
+    gluOrtho2D(0, GLSW, 0, GLSH);
     init();
     glutDisplayFunc(display);
     glutKeyboardFunc(KeysDown);
