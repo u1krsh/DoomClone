@@ -22,4 +22,17 @@
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="textures\TEXTURE_TEMPLATE.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\T_01.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="tools\convert_texture.py" />
+    <None Include="TEXTURES_README.md" />
+    <None Include="tools\extract_bmp_to_raw.py" />
+  </ItemGroup>
 </Project>

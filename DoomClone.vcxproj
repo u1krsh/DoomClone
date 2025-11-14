@@ -130,6 +130,15 @@
     <ClCompile Include="DoomTest.c" />
     <ClCompile Include="Oracular_map_editor.c" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="textures\TEXTURE_TEMPLATE.h" />
+    <ClInclude Include="textures\T_01.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="TEXTURES_README.md" />
+    <None Include="tools\convert_texture.py" />
+    <None Include="tools\extract_bmp_to_raw.py" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
