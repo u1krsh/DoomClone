@@ -421,13 +421,13 @@ void draw2D()
     // Wall texture preview (15x15 box at 145, 97)
     if (Textures[G.wt].w > 0 && Textures[G.wt].h > 0)
     {
-        drawTexturePreview(G.wt, 145, 105 - 8, 15, 15);
+        drawTexturePreview(G.wt, 144, 105 - 8, 15, 15);
     }
 
     // Surface texture preview (15x15 box at 145, 81)
     if (Textures[G.st].w > 0 && Textures[G.st].h > 0)
     {
-        drawTexturePreview(G.st, 145, 105 - 24 - 8, 15, 15);
+        drawTexturePreview(G.st, 144, 105 - 24 - 8, 15, 15);
     }
 
     //draw numbers
@@ -817,7 +817,7 @@ int main(int argc, char* argv[])
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
     glutInitWindowPosition(GLSW / 2, GLSH / 2);
     glutInitWindowSize(GLSW, GLSH);
-    mainWindow = glutCreateWindow("Oracular Mark I"); // single main window
+    mainWindow = glutCreateWindow("Oracular Map Edit"); // single main window
     glPointSize(pixelScale);
     gluOrtho2D(0, GLSW, 0, GLSH);
     init();
