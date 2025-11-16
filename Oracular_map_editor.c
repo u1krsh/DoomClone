@@ -620,7 +620,7 @@ void mouse(int button, int state, int x, int y)
                 //point 2
                 W[numWall - 1].x2 = G.mx * G.scale; W[numWall - 1].y2 = G.my * G.scale; //x2,y2
                 //automatic shading 
-                float ang = atan2f(W[numWall - 1].y2 - W[numWall - 1].y1, W[numWall - 1].x2 - W[numWall - 1].x1);
+                float ang = atan2f(W[numWall - 1].x2 - W[numWall - 1].x1, W[numWall - 1].y2 - W[numWall - 1].y1);
                 ang = (ang * 180) / M_PI;      //radians to degrees
                 if (ang < 0) { ang += 360; }    //correct negative
                 int shade = ang;           //shading goes from 0-90-0-90-0
@@ -804,7 +804,7 @@ void init()
 
     Textures[5].w = T_05_WIDTH;
     Textures[5].h = T_05_HEIGHT;
-    Textures[5].name = T_05;
+    //Textures[5].name = T_05;
 
     Textures[6].w = T_06_WIDTH;
     Textures[6].h = T_06_HEIGHT;
