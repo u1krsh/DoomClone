@@ -224,7 +224,7 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2,int s, int w, int f
 				int ty = ((int)vt) % Textures[wt].h;
 				
 				// Flip vertically and get pixel from texture
-				int pixelN = (Textures[wt].h - ty - 1) * 3 * Textures[wt].w + tx * 3;
+				int pixelN = (Textures[wt].h - ty - 1) * 3 * Textures[wt].w + ((int)ht%Textures[wt].w)*3;
 				int r = Textures[wt].name[pixelN + 0] - W[w].shade; if (r < 0) { r = 0; }
 				int g = Textures[wt].name[pixelN + 1] - W[w].shade; if (g < 0) { g = 0; }
 				int b = Textures[wt].name[pixelN + 2] - W[w].shade; if (b < 0) { b = 0; }
@@ -330,19 +330,44 @@ void draw3D() { // real sussy baka
 	}
 }
 
-void testTextures() {
-	int x, y, t;
-	t = 0;
-	for (y = 0; y < Textures[t].h; y++) {
-		for (x = 0; x < Textures[t].w; x++) {
-			int pixelN = (Textures[t].h-y-1) * 3* Textures[t].w + x * 3;
-			int r = Textures[t].name[pixelN + 0];
-			int g = Textures[t].name[pixelN + 1];
-			int b = Textures[t].name[pixelN + 2];
-			pixel(x, y, r, g, b);
+//void testTextures() {
+//	int x, y, t;
+//	t = 0;
+//	for (y = 0; y < Textures[t].h; y++) {
+//		for (x = 0; x < Textures[t].w; x++) {
+//			int pixelN = (Textures[t].h-y-1) * 3* Textures[t].w + x * 3;
+//			int r = Textures[t].name[pixelN + 0];
+//			int g = Textures[t].name[pixelN + 1];
+//			int b = Textures[t].name[pixelN + 2];
+//			pixel(x, y, r, g, b);
+//		}
+//	}
+//}
+
+
+void floors() {
+	int x, y;
+	int xo = SW / 2; //x offset
+	int yo = SH / 2; // y offset
+	float fov = 200.0;
+	float lookUpDown = P.l * 2; if (lookUpDown > SH) { lookUpDown = SH; }
+	for (y = -yo; y < -lookUpDown; y++) {
+		for (x = -xo; x < xo; x++) {
+			float fx = x/(float) y;
+			float fy = fov / (float) y;
+
+			float rx = fx * M.sin[P.a] - fy * M.cos[P.a]+(P.y/30.0);
+			float ry = fx * M.cos[P.a] - fy * M.sin[P.a]-(P.x/30.0);
+			if (rx < 0) { rx = -rx + 1; }
+			if (ry < 0) { ry -= ry + 1; }
+
+			if ((int)rx % 2 == (int)ry % 2) { pixel(x + xo, y + yo, 0, 60, 130); }
+			else { pixel(x + xo, y + yo, 0, 60, 130); }
 		}
 	}
 }
+
+
 
 void display() {
 	int x, y;
@@ -350,7 +375,7 @@ void display() {
 	if (T.fr1 - T.fr2 >= 50) { //20 fps
 		clearBackground();
 		movePl();
-		draw3D();
+		floors();/*draw3D();*/
 		T.fr2 = T.fr1;
 		glutSwapBuffers();
 		glutReshapeWindow(GSLW, GSLH); // stops from resizeing window
@@ -449,4 +474,4 @@ int main(int argc, char* argv[]) {
 	return 0;
 
 
-}
+}////
