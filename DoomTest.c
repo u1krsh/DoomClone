@@ -11,6 +11,7 @@
 #define GSLW SW*pixelScale //open gl window width
 #define GSLH SH*pixelScale //open gl window height
 
+#define M_PI 3.14159265358979323846  /* pi */
 
 // textures
 #include "textures/number.h"
@@ -30,6 +31,9 @@ int numText = 7;                          //number of textures (increased from 1
 
 int numSect = 0;                          //number of sectors
 int numWall = 0;                          //number of walls
+
+// Collision detection constants
+#define PLAYER_RADIUS 8  // Player collision radius
 
 
 
@@ -141,13 +145,47 @@ void movePl()
 	//move up, down, left, right
 	if (K.a == 1 && K.m == 0) { P.a -= 4; if (P.a < 0) { P.a += 360; } }
 	if (K.d == 1 && K.m == 0) { P.a += 4; if (P.a > 359) { P.a -= 360; } }
+	
 	int dx = M.sin[P.a] * 10.0;
 	int dy = M.cos[P.a] * 10.0;
-	if (K.w == 1 && K.m == 0) { P.x += dx; P.y += dy; }
-	if (K.s == 1 && K.m == 0) { P.x -= dx; P.y -= dy; }
+	
+	// Store old position for collision rollback
+	int oldX = P.x;
+	int oldY = P.y;
+	int newX = P.x;
+	int newY = P.y;
+	
+	// Calculate new position based on input
+	if (K.w == 1 && K.m == 0) { newX += dx; newY += dy; }
+	if (K.s == 1 && K.m == 0) { newX -= dx; newY -= dy; }
+	
 	//strafe left, right
-	if (K.sr == 1) { P.x += dy; P.y -= dx; }
-	if (K.sl == 1) { P.x -= dy; P.y += dx; }
+	if (K.sr == 1) { newX += dy; newY -= dx; }
+	if (K.sl == 1) { newX -= dy; newY += dx; }
+	
+	// Only update position if no collision (and not in godMode)
+	if (!godMode) {
+		if (!checkWallCollision(newX, newY)) {
+			P.x = newX;
+			P.y = newY;
+		}
+		else {
+			// Try sliding along walls by testing X and Y movement separately
+			if (!checkWallCollision(newX, oldY)) {
+				P.x = newX; // Can move in X direction
+			}
+			else if (!checkWallCollision(oldX, newY)) {
+				P.y = newY; // Can move in Y direction
+			}
+			// else: blocked completely, don't move
+		}
+	}
+	else {
+		// GodMode: no collision
+		P.x = newX;
+		P.y = newY;
+	}
+	
 	//move up, down, look up, look down (only if godMode is enabled)
 	if (godMode) {
 		if (K.a == 1 && K.m == 1) { P.l -= 1; }
@@ -160,6 +198,60 @@ void movePl()
 		if (K.a == 1 && K.m == 1) { P.l -= 1; }
 		if (K.d == 1 && K.m == 1) { P.l += 1; }
 	}
+}
+
+// Helper function: Check if point is on the left side of a line
+int isOnLeftSide(int px, int py, int x1, int y1, int x2, int y2) {
+	return ((x2 - x1) * (py - y1) - (y2 - y1) * (px - x1)) > 0;
+}
+
+// Helper function: Distance from point to line segment
+float pointToLineDistance(int px, int py, int x1, int y1, int x2, int y2) {
+	int dx = x2 - x1;
+	int dy = y2 - y1;
+	
+	if (dx == 0 && dy == 0) {
+		// Line segment is actually a point
+		int ddx = px - x1;
+		int ddy = py - y1;
+		return sqrt(ddx * ddx + ddy * ddy);
+	}
+	
+	// Calculate projection factor
+	float t = ((px - x1) * dx + (py - y1) * dy) / (float)(dx * dx + dy * dy);
+	
+	// Clamp t to [0, 1] to stay within line segment
+	if (t < 0.0f) t = 0.0f;
+	if (t > 1.0f) t = 1.0f;
+	
+	// Calculate closest point on line segment
+	float closestX = x1 + t * dx;
+	float closestY = y1 + t * dy;
+	
+	// Calculate distance
+	float distX = px - closestX;
+	float distY = py - closestY;
+	return sqrt(distX * distX + distY * distY);
+}
+
+// Check if moving from (x1,y1) collides with any wall
+int checkWallCollision(int newX, int newY) {
+	int s, w;
+	
+	// Check against all walls in all sectors
+	for (s = 0; s < numSect; s++) {
+		for (w = S[s].ws; w < S[s].we; w++) {
+			// Calculate distance from new position to this wall
+			float distance = pointToLineDistance(newX, newY, W[w].x1, W[w].y1, W[w].x2, W[w].y2);
+			
+			// If distance is less than player radius, collision detected
+			if (distance < PLAYER_RADIUS) {
+				return 1; // Collision detected
+			}
+		}
+	}
+	
+	return 0; // No collision
 }
 
 void clearBackground() {
@@ -201,6 +293,42 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 	// Store original x1, x2 for texture coordinate calculation before clipping
 	int x1_orig = x1;
 	int x2_orig = x2;
+
+	// Calculate dynamic shading based on wall angle relative to player view
+	// Get wall angle in world space (in degrees)
+	float dx_wall = (float)(W[w].x2 - W[w].x1);
+	float dy_wall = (float)(W[w].y2 - W[w].y1);
+	float wallAngle = atan2f(dy_wall, dx_wall) * 57.2958f; // 180/pi = 57.2958
+	if (wallAngle < 0) { wallAngle += 360.0f; }
+	
+	// Calculate angle difference between player view and wall normal
+	// Wall normal is perpendicular to the wall (add 90 degrees)
+	float wallNormal = wallAngle + 90.0f;
+	if (wallNormal >= 360.0f) { wallNormal -= 360.0f; }
+	
+	// Calculate angle difference (how much the wall faces the player)
+	float angleDiff = wallNormal - (float)P.a;
+	
+	// Normalize to -180 to 180 range
+	while (angleDiff > 180.0f) { angleDiff -= 360.0f; }
+	while (angleDiff < -180.0f) { angleDiff += 360.0f; }
+	
+	// Convert to 0-180 range (we only care about magnitude)
+	if (angleDiff < 0) { angleDiff = -angleDiff; }
+	
+	// Calculate shade based on angle (0 = facing player directly, 180 = perpendicular)
+	// Walls facing the player get less shade, perpendicular walls get more shade
+	float shadeFactor = angleDiff / 180.0f; // 0.0 to 1.0
+	
+	// Apply smooth curve for more natural shading
+	shadeFactor = shadeFactor * shadeFactor; // Square for smoother transition
+	
+	// Calculate final shade value (0-90 range for compatibility)
+	int dynamicShade = (int)(shadeFactor * 90.0f);
+	
+	// Clamp to ensure valid range
+	if (dynamicShade < 0) { dynamicShade = 0; }
+	if (dynamicShade > 90) { dynamicShade = 90; }
 
 	//clipping x
 	if (x1 < 0) { x1 = 0; }
@@ -262,9 +390,10 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 				// Bounds check for pixel index
 				int maxPixel = Textures[wt].w * Textures[wt].h * 3;
 				if (pixelN >= 0 && pixelN + 2 < maxPixel) {
-					int r = Textures[wt].name[pixelN + 0] - W[w].shade; if (r < 0) { r = 0; }
-					int g = Textures[wt].name[pixelN + 1] - W[w].shade; if (g < 0) { g = 0; }
-					int b = Textures[wt].name[pixelN + 2] - W[w].shade; if (b < 0) { b = 0; }
+					// Use dynamic shade instead of static W[w].shade
+					int r = Textures[wt].name[pixelN + 0] - dynamicShade; if (r < 0) { r = 0; }
+					int g = Textures[wt].name[pixelN + 1] - dynamicShade; if (g < 0) { g = 0; }
+					int b = Textures[wt].name[pixelN + 2] - dynamicShade; if (b < 0) { b = 0; }
 					pixel(x, y, r, g, b);
 				}
 			}
@@ -336,8 +465,8 @@ void draw3D() { // real sussy baka
 				wz[2] = S[s].z2 - P.z + ((P.l * wy[0]) / 32.0);
 				wz[3] = S[s].z2 - P.z + ((P.l * wy[1]) / 32.0);
 
-				//dont draw if behinde player
-				if (wy[0] < 1 && wy[1] < 1) { return; } //dont draw wall behind player
+				//dont draw if behinde player - FIXED: use continue instead of return
+				if (wy[0] < 1 && wy[1] < 1) { continue; } //dont draw this wall behind player, but continue with next wall
 
 				//point 1 behind player
 
