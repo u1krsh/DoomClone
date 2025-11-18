@@ -35,10 +35,10 @@
     <ClCompile Include="DoomTest.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="console.c">
+    <ClCompile Include="console_font.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="console_font.c">
+    <ClCompile Include="console.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

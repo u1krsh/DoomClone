@@ -36,7 +36,6 @@ int numWall = 0;                          //number of walls
 #define PLAYER_RADIUS 8  // Player collision radius
 
 
-
 typedef struct {
 	int fr1, fr2; // these are frame 1 and 2 for a constant frame rate
 	int fps;      // current FPS
@@ -163,8 +162,8 @@ void movePl()
 	if (K.sr == 1) { newX += dy; newY -= dx; }
 	if (K.sl == 1) { newX -= dy; newY += dx; }
 	
-	// Only update position if no collision (and not in godMode)
-	if (!godMode) {
+	// Only update position if no collision (and not in godMode or noclip)
+	if (!godMode && !noclip) {
 		if (!checkWallCollision(newX, newY)) {
 			P.x = newX;
 			P.y = newY;
@@ -181,7 +180,7 @@ void movePl()
 		}
 	}
 	else {
-		// GodMode: no collision
+		// GodMode or noclip: no collision
 		P.x = newX;
 		P.y = newY;
 	}
@@ -805,6 +804,8 @@ void init() {
 	Textures[6].h = T_06_HEIGHT;
 	Textures[6].name = T_06;
 
+	// Load the map automatically at startup
+	load();
 }
 
 int main(int argc, char* argv[]) {
@@ -824,4 +825,4 @@ int main(int argc, char* argv[]) {
 	return 0;
 
 
-}////
+}////}////

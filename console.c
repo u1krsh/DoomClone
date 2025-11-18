@@ -8,7 +8,7 @@ Console console;
 
 // Global game state variables
 int godMode = 0;
-
+int noclip = 0;
 void initConsole(int screenWidth, int screenHeight) {
     console.active = 0;
     console.animating = 0;
@@ -149,9 +149,19 @@ void consoleExecuteCommand() {
             consolePrint("God mode DISABLED");
         }
     }
+    else if (strcmp(command, "noclip") == 0) {
+        noclip = !noclip;
+        if (noclip) {
+            consolePrint("noclip ENABLED");
+        }   
+        else {
+            consolePrint("noclip DISABLED");
+        }
+    }
     else if (strcmp(command, "help") == 0) {
         consolePrint("Available commands:");
         consolePrint("  godmode - Toggle god mode");
+        consolePrint("  noclip - Walk through walls");
         consolePrint("  help - Show this help");
         consolePrint("  clear - Clear console");
     }

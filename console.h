@@ -28,6 +28,7 @@ extern Console console;
 
 // Global game state variables
 extern int godMode;
+extern int noclip;
 
 // Console functions
 void initConsole(int screenWidth, int screenHeight);
