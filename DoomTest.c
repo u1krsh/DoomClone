@@ -3,11 +3,11 @@
 #include <math.h>
 
 #define res 1 //resolotion scale
-#define SH 120*res //screen height
-#define SW 160*res //screen width
+#define SH 240*res //screen height
+#define SW 320*res //screen width
 #define HSH SH/2 //half screen height
 #define HSW SW/2 //half screen width
-#define pixelScale  4/res //open gl pixel size
+#define pixelScale  3/res //open gl pixel size
 #define GSLW SW*pixelScale //open gl window width
 #define GSLH SH*pixelScale //open gl window height
 
@@ -23,6 +23,9 @@
 #include "textures/T_05.h"
 #include "textures/T_06.h"
 
+// Console module
+#include "console.h"
+
 int numText = 7;                          //number of textures (increased from 1 to 2)
 
 int numSect = 0;                          //number of sectors
@@ -32,7 +35,11 @@ int numWall = 0;                          //number of walls
 
 typedef struct {
 	int fr1, fr2; // these are frame 1 and 2 for a constant frame rate
-}time; 
+	int fps;      // current FPS
+	int frameCount; // frame counter
+	int fpsTimer;   // timer for FPS calculation
+	int showFPS;    // toggle FPS display
+}time;
 time T;
 
 typedef struct
@@ -40,7 +47,7 @@ typedef struct
 	int w, s, a, d;           //move up, down, left, rigth
 	int sl, sr;             //strafe left, right 
 	int m;                 //move up, down, look up, down
-}keys; 
+}keys;
 keys K;
 
 typedef struct {
@@ -54,7 +61,7 @@ typedef struct {
 	int x, y, z; //position
 	int a;// angle of rotation
 	int l; // variable to look up and down
-}player; 
+}player;
 player P;
 
 typedef struct {
@@ -87,47 +94,50 @@ typedef struct {
 
 void load()
 {
-    FILE* fp = fopen("level.h", "r");
-    if (fp == NULL) { printf("Error opening level.h"); return; }
-    int s, w;
+	FILE* fp = fopen("level.h", "r");
+	if (fp == NULL) { printf("Error opening level.h"); return; }
+	int s, w;
 
-    fscanf_s(fp, "%i", &numSect);   //number of sectors 
-    for (s = 0; s < numSect; s++)      //load all sectors
-    {
-        fscanf_s(fp, "%i", &S[s].ws);
-        fscanf_s(fp, "%i", &S[s].we);
-        fscanf_s(fp, "%i", &S[s].z1);
-        fscanf_s(fp, "%i", &S[s].z2);
-        fscanf_s(fp, "%i", &S[s].st);
-        fscanf_s(fp, "%i", &S[s].ss);
-    }
-    fscanf_s(fp, "%i", &numWall);   //number of walls 
-    for (s = 0; s < numWall; s++)      //load all walls
-    {
-        fscanf_s(fp, "%i", &W[s].x1);
-        fscanf_s(fp, "%i", &W[s].y1);
-        fscanf_s(fp, "%i", &W[s].x2);
-        fscanf_s(fp, "%i", &W[s].y2);
-        fscanf_s(fp, "%i", &W[s].wt);
-        fscanf_s(fp, "%i", &W[s].u);
-        fscanf_s(fp, "%i", &W[s].v);
-        fscanf_s(fp, "%i", &W[s].shade);
-    }
-    fscanf_s(fp, "%i %i %i %i %i", &P.x, &P.y, &P.z, &P.a, &P.l); //player position, angle, look direction 
-    fclose(fp);
+	fscanf_s(fp, "%i", &numSect);   //number of sectors 
+	for (s = 0; s < numSect; s++)      //load all sectors
+	{
+		fscanf_s(fp, "%i", &S[s].ws);
+		fscanf_s(fp, "%i", &S[s].we);
+		fscanf_s(fp, "%i", &S[s].z1);
+		fscanf_s(fp, "%i", &S[s].z2);
+		fscanf_s(fp, "%i", &S[s].st);
+		fscanf_s(fp, "%i", &S[s].ss);
+	}
+	fscanf_s(fp, "%i", &numWall);   //number of walls 
+	for (s = 0; s < numWall; s++)      //load all walls
+	{
+		fscanf_s(fp, "%i", &W[s].x1);
+		fscanf_s(fp, "%i", &W[s].y1);
+		fscanf_s(fp, "%i", &W[s].x2);
+		fscanf_s(fp, "%i", &W[s].y2);
+		fscanf_s(fp, "%i", &W[s].wt);
+		fscanf_s(fp, "%i", &W[s].u);
+		fscanf_s(fp, "%i", &W[s].v);
+		fscanf_s(fp, "%i", &W[s].shade);
+	}
+	fscanf_s(fp, "%i %i %i %i %i", &P.x, &P.y, &P.z, &P.a, &P.l); //player position, angle, look direction 
+	fclose(fp);
 }
 
-void pixel(int x, int y,int r, int g, int b) { //draws pixel at x,y with color c
+void pixel(int x, int y, int r, int g, int b) { //draws pixel at x,y with color c
 
 	//if (c == 6) { rgb[0] = 0; rgb[1] = 60; rgb[2] = 130; } //background 
-	glColor3ub(r,g,b);
+	glColor3ub(r, g, b);
 	glBegin(GL_POINTS);
-	glVertex2i(x*pixelScale+2, y*pixelScale+2);
-	glEnd();	
+	glVertex2i(x * pixelScale + 2, y * pixelScale + 2);
+	glEnd();
 }
 
 void movePl()
 {
+	// Don't move if console is active
+	if (console.active) return;
+	
 	//move up, down, left, right
 	if (K.a == 1 && K.m == 0) { P.a -= 4; if (P.a < 0) { P.a += 360; } }
 	if (K.d == 1 && K.m == 0) { P.a += 4; if (P.a > 359) { P.a -= 360; } }
@@ -138,23 +148,30 @@ void movePl()
 	//strafe left, right
 	if (K.sr == 1) { P.x += dy; P.y -= dx; }
 	if (K.sl == 1) { P.x -= dy; P.y += dx; }
-	//move up, down, look up, look down
-	if (K.a == 1 && K.m == 1) { P.l -= 1; }
-	if (K.d == 1 && K.m == 1) { P.l += 1; }
-	if (K.w == 1 && K.m == 1) { P.z -= 4; }
-	if (K.s == 1 && K.m == 1) { P.z += 4; }
+	//move up, down, look up, look down (only if godMode is enabled)
+	if (godMode) {
+		if (K.a == 1 && K.m == 1) { P.l -= 1; }
+		if (K.d == 1 && K.m == 1) { P.l += 1; }
+		if (K.w == 1 && K.m == 1) { P.z -= 4; }
+		if (K.s == 1 && K.m == 1) { P.z += 4; }
+	}
+	else {
+		// In non-godMode, allow look up/down but not flying
+		if (K.a == 1 && K.m == 1) { P.l -= 1; }
+		if (K.d == 1 && K.m == 1) { P.l += 1; }
+	}
 }
 
 void clearBackground() {
 	int x, y;
 	for (y = 0; y < SH; y++) {
 		for (x = 0; x < SW; x++) {
-			pixel(x, y, 0,60,130); //clear background 
+			pixel(x, y, 0, 60, 130); //clear background 
 		}
 	}
 }
 
-void clipBehindPlayer(int *x1, int *y1, int *z1, int x2, int y2, int z2) {
+void clipBehindPlayer(int* x1, int* y1, int* z1, int x2, int y2, int z2) {
 	float da = *y1;
 	float db = y2;
 	float d = da - db; if (da == 0) { d = 1; }
@@ -170,7 +187,7 @@ int dist(int x1, int y1, int x2, int y2) {
 	return distance;
 }
 
-void drawWall(int x1, int x2, int b1, int b2, int t1, int t2,int s, int w, int frontBack) {
+void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int frontBack) {
 	int wt = W[w].wt;
 
 	int x, y;
@@ -180,11 +197,11 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2,int s, int w, int f
 	int dx = x2 - x1; // x distance
 	if (dx == 0) { dx = 1; } // prevent divide by zero
 	int xs = x1; //hold initial x1 staring position
-	
+
 	// Store original x1, x2 for texture coordinate calculation before clipping
 	int x1_orig = x1;
 	int x2_orig = x2;
-	
+
 	//clipping x
 	if (x1 < 0) { x1 = 0; }
 	if (x2 < 0) { x2 = 0; }
@@ -198,12 +215,17 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2,int s, int w, int f
 
 		// Calculate horizontal texture coordinate using original unclipped coordinates
 		float ht = ((float)(x - x1_orig) / (float)(x2_orig - x1_orig)) * Textures[wt].w * W[w].u;
-		int tx = ((int)ht) % Textures[wt].w;
 		
+		// Clamp ht to prevent out-of-bounds access
+		if (ht < 0) ht = 0;
+		if (ht >= Textures[wt].w * W[w].u) ht = Textures[wt].w * W[w].u - 0.001f;
+		
+		int tx = ((int)ht) % Textures[wt].w;
+
 		// Store original y1, y2 for texture coordinate calculation before clipping
 		int y1_orig = y1;
 		int y2_orig = y2;
-		
+
 		//clipping y
 		if (y1 < 0) { y1 = 0; }
 		if (y2 < 0) { y2 = 0; }
@@ -214,27 +236,43 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2,int s, int w, int f
 		if (frontBack == 0) {
 			if (S[s].surface == 1) { S[s].surf[x] = y1; } //bottom surface save top row
 			if (S[s].surface == 2) { S[s].surf[x] = y2; }
-			
+
 			int wall_height = y2_orig - y1_orig;
 			if (wall_height <= 0) continue;
-			
-			for (y = y1; y < y2; y++) { 
+
+			for (y = y1; y < y2; y++) {
 				// Calculate vertical texture coordinate using original unclipped coordinates
 				float vt = ((float)(y - y1_orig) / (float)wall_height) * Textures[wt].h * W[w].v;
-				int ty = ((int)vt) % Textures[wt].h;
 				
+				// Clamp vt to prevent out-of-bounds access
+				if (vt < 0) vt = 0;
+				if (vt >= Textures[wt].h * W[w].v) vt = Textures[wt].h * W[w].v - 0.001f;
+				
+				int ty = ((int)vt) % Textures[wt].h;
+
+				// Clamp texture coordinates to valid range
+				if (tx < 0) tx = 0;
+				if (tx >= Textures[wt].w) tx = Textures[wt].w - 1;
+				if (ty < 0) ty = 0;
+				if (ty >= Textures[wt].h) ty = Textures[wt].h - 1;
+
 				// Flip vertically and get pixel from texture
-				int pixelN = (Textures[wt].h - ty - 1) * 3 * Textures[wt].w + ((int)ht%Textures[wt].w)*3;
-				int r = Textures[wt].name[pixelN + 0] - W[w].shade; if (r < 0) { r = 0; }
-				int g = Textures[wt].name[pixelN + 1] - W[w].shade; if (g < 0) { g = 0; }
-				int b = Textures[wt].name[pixelN + 2] - W[w].shade; if (b < 0) { b = 0; }
-				pixel(x, y, r, g, b);
-			} 
+				int pixelN = (Textures[wt].h - ty - 1) * 3 * Textures[wt].w + tx * 3;
+				
+				// Bounds check for pixel index
+				int maxPixel = Textures[wt].w * Textures[wt].h * 3;
+				if (pixelN >= 0 && pixelN + 2 < maxPixel) {
+					int r = Textures[wt].name[pixelN + 0] - W[w].shade; if (r < 0) { r = 0; }
+					int g = Textures[wt].name[pixelN + 1] - W[w].shade; if (g < 0) { g = 0; }
+					int b = Textures[wt].name[pixelN + 2] - W[w].shade; if (b < 0) { b = 0; }
+					pixel(x, y, r, g, b);
+				}
+			}
 		}
 		if (frontBack == 1) {
 			if (S[s].surface == 1) { y2 = S[s].surf[x]; } //bottom surface save top row
 			if (S[s].surface == 2) { y1 = S[s].surf[x]; }
-			for (y = y1; y < y2; y++) { pixel(x, y, 255,0,0); } //normal wall
+			for (y = y1; y < y2; y++) { pixel(x, y, 255, 0, 0); } //normal wall
 		}
 	}
 }
@@ -243,7 +281,7 @@ void draw3D() { // real sussy baka
 	int wx[4], wy[4], wz[4];// world x and y
 	float CS = M.cos[P.a]; //player cos and sin
 	float SN = M.sin[P.a];
-	int s, w, frontBack, cycles,x;
+	int s, w, frontBack, cycles, x;
 	//order sector by distace
 	for (s = 0; s < numSect - 1; s++) {
 		for (w = 0; w < numSect - s - 1; w++) {
@@ -262,7 +300,7 @@ void draw3D() { // real sussy baka
 	for (s = 0; s < numSect; s++) {
 		S[s].d = 0; // clear distance 
 		if (P.z < S[s].z1) { S[s].surface = 1; cycles = 2; for (x = 0; x < SW; x++) { S[s].surf[x] = SH; } }//bottom surface
-		else if (P.z > S[s].z2) { S[s].surface = 2; cycles = 2; for (x = 0; x < SW; x++) { S[s].surf[x] = 0; }}//top surface
+		else if (P.z > S[s].z2) { S[s].surface = 2; cycles = 2; for (x = 0; x < SW; x++) { S[s].surf[x] = 0; } }//top surface
 		else { S[s].surface = 0; cycles = 1; }// no surface
 
 
@@ -353,11 +391,11 @@ void floors() {
 	float lookUpDown = P.l * 2; if (lookUpDown > SH) { lookUpDown = SH; }
 	for (y = -yo; y < -lookUpDown; y++) {
 		for (x = -xo; x < xo; x++) {
-			float fx = x/(float) y;
-			float fy = fov / (float) y;
+			float fx = x / (float)y;
+			float fy = fov / (float)y;
 
-			float rx = fx * M.sin[P.a] - fy * M.cos[P.a]+(P.y/30.0);
-			float ry = fx * M.cos[P.a] - fy * M.sin[P.a]-(P.x/30.0);
+			float rx = fx * M.sin[P.a] - fy * M.cos[P.a] + (P.y / 30.0);
+			float ry = fx * M.cos[P.a] - fy * M.sin[P.a] - (P.x / 30.0);
 			if (rx < 0) { rx = -rx + 1; }
 			if (ry < 0) { ry -= ry + 1; }
 
@@ -367,26 +405,186 @@ void floors() {
 	}
 }
 
+void drawNumber(int n, int x, int y) {
+	int i, s, xo, yo;
+	s = n;
+	if (s == 0) { xo = 0; yo = 0; } // 0
+	if (s == 1) { xo = 16; yo = 0; } // 1
+	if (s == 2) { xo = 32; yo = 0; } // 2
+	if (s == 3) { xo = 48; yo = 0; } // 3
+	if (s == 4) { xo = 64; yo = 0; } // 4
+	if (s == 5) { xo = 80; yo = 0; } // 5
+	if (s == 6) { xo = 96; yo = 0; } // 6
+	if (s == 7) { xo = 112; yo = 0; } // 7
+	if (s == 8) { xo = 128; yo = 0; } // 8
+	if (s == 9) { xo = 144; yo = 0; } // 9
 
+	int sx, sy;
+	for (sy = 0; sy < 16; sy++) {
+		for (sx = 0; sx < 16; sx++) {
+			i = (sy * 160 + xo + sx) * 3;
+			if (T_NUMBERS[i] > 0) {
+				pixel(x + sx, y + sy, T_NUMBERS[i], T_NUMBERS[i + 1], T_NUMBERS[i + 2]);
+			}
+		}
+	}
+}
+
+// Simple 3x5 pixel font for digits 0-9
+void drawDigit(int digit, int x, int y, int r, int g, int b) {
+	// Each digit is 3 pixels wide, 5 pixels tall
+	int patterns[10][5] = {
+		{0x7, 0x5, 0x5, 0x5, 0x7}, // 0
+		{0x2, 0x6, 0x2, 0x2, 0x7}, // 1
+		{0x7, 0x1, 0x7, 0x4, 0x7}, // 2
+		{0x7, 0x1, 0x7, 0x1, 0x7}, // 3
+		{0x5, 0x5, 0x7, 0x1, 0x1}, // 4
+		{0x7, 0x4, 0x7, 0x1, 0x7}, // 5
+		{0x7, 0x4, 0x7, 0x5, 0x7}, // 6
+		{0x7, 0x1, 0x1, 0x1, 0x1}, // 7
+		{0x7, 0x5, 0x7, 0x5, 0x7}, // 8
+		{0x7, 0x5, 0x7, 0x1, 0x7}  // 9
+	};
+	
+	if (digit < 0 || digit > 9) return;
+	
+	int row, col;
+	for (row = 0; row < 5; row++) {
+		for (col = 0; col < 3; col++) {
+			if (patterns[digit][row] & (1 << (2 - col))) {
+				pixel(x + col, y + row, r, g, b);
+			}
+		}
+	}
+}
+
+void drawFPS() {
+	// Draw FPS value in top-left corner
+	int fps = T.fps;
+	int x = 5;
+	int y = SH - 10;
+	
+	// Draw each digit of the FPS
+	if (fps >= 100) {
+		drawDigit((fps / 100) % 10, x, y, 255, 255, 255);
+		drawDigit((fps / 10) % 10, x + 4, y, 255, 255, 255);
+		drawDigit(fps % 10, x + 8, y, 255, 255, 255);
+	}
+	else if (fps >= 10) {
+		drawDigit((fps / 10) % 10, x, y, 255, 255, 255);
+		drawDigit(fps % 10, x + 4, y, 255, 255, 255);
+	}
+	else {
+		drawDigit(fps % 10, x, y, 255, 255, 255);
+	}
+}
+
+void drawConsoleText() {
+	if (console.slidePos <= 0.0f) return;
+	
+	// Calculate console height based on screen height percentage
+	int consoleHeight = (int)(SH * CONSOLE_HEIGHT_PERCENT * console.slidePos);
+	int x, y;
+	
+	// Draw semi-transparent console background
+	for (y = SH - consoleHeight; y < SH; y++) {
+		for (x = 0; x < SW; x++) {
+			pixel(x, y, 0, 0, 0); // Black background
+		}
+	}
+	
+	// Draw console border
+	for (x = 0; x < SW; x++) {
+		pixel(x, SH - consoleHeight, 255, 255, 0); // Yellow border
+	}
+	
+	// Calculate font scale based on resolution (1 for low res, 2 for medium, 3+ for high)
+	int fontScale = 1;
+	if (SH >= 480) fontScale = 2;
+	if (SH >= 720) fontScale = 3;
+	if (SH >= 1080) fontScale = 4;
+	
+	int lineHeight = 10 * fontScale; // Height of each text line
+	
+	// Draw message history (from top of console downward)
+	int messageY = SH - consoleHeight + (5 * fontScale); // Start below border
+	for (int i = 0; i < console.messageCount && i < CONSOLE_MESSAGE_LINES; i++) {
+		if (console.messages[i][0] != '\0') {
+			drawStringScaled(5 * fontScale, messageY, console.messages[i], 255, 255, 255, fontScale, pixel);
+			messageY += lineHeight;
+		}
+	}
+	
+	// Draw prompt ">" and input text at bottom
+	int textY = SH - lineHeight; // Position from bottom
+	int textX = 5 * fontScale; // Scaled margin
+	
+	// Draw ">" prompt using the scaled font
+	drawCharScaled(textX, textY, '>', 255, 255, 0, fontScale, pixel);
+	
+	textX += (10 * fontScale); // Move past the prompt (scaled spacing)
+	
+	// Draw input text using the scaled bitmap font
+	drawStringScaled(textX, textY, console.input, 255, 255, 255, fontScale, pixel);
+	
+	// Draw cursor (blinking)
+	int cursorX = textX + (console.inputPos * 8 * fontScale); // 8 pixels per character * scale
+	if ((T.fr1 / 500) % 2 == 0) { // Blink every 500ms
+		// Draw underscore cursor
+		drawCharScaled(cursorX, textY, '_', 255, 255, 0, fontScale, pixel);
+	}
+}
 
 void display() {
 	int x, y;
 
-	if (T.fr1 - T.fr2 >= 50) { //20 fps
+	if (T.fr1 - T.fr2 >= 28) { // 35 fps (1000ms/35 = ~28.57ms per frame)
 		clearBackground();
 		movePl();
-		floors();/*draw3D();*/
+		draw3D();
+		
+		// Update console animation
+		updateConsole();
+		
+		if (T.showFPS) { // Only draw FPS if enabled
+			drawFPS();
+		}
+		
+		// Draw console on top of everything
+		drawConsoleText();
+		
+		// Calculate FPS
+		T.frameCount++;
+		if (T.fr1 - T.fpsTimer >= 1000) { // Update FPS every second
+			T.fps = T.frameCount;
+			T.frameCount = 0;
+			T.fpsTimer = T.fr1;
+		}
+		
 		T.fr2 = T.fr1;
 		glutSwapBuffers();
 		glutReshapeWindow(GSLW, GSLH); // stops from resizeing window
 	}
-	T.fr1 = glutGet(GLUT_ELAPSED_TIME); 
+	T.fr1 = glutGet(GLUT_ELAPSED_TIME);
 	glutPostRedisplay();
 }
 
 
 void KeysDown(unsigned char key, int x, int y)
 {
+	// Toggle console with backtick/tilde key
+	if (key == '`' || key == '~') {
+		toggleConsole();
+		return;
+	}
+	
+	// If console is active, send input to console
+	if (console.active) {
+		consoleHandleKey(key);
+		return;
+	}
+	
+	// Normal game controls
 	if (key == 'w') { K.w = 1; }
 	if (key == 's') { K.s = 1; }
 	if (key == 'a') { K.a = 1; }
@@ -396,8 +594,19 @@ void KeysDown(unsigned char key, int x, int y)
 	if (key == ',') { K.sl = 1; }
 	if (key == 13) { load(); } //enter key to load level
 }
+
+void specialKeys(int key, int x, int y)
+{
+	if (key == GLUT_KEY_F1) { T.showFPS = !T.showFPS; } // Toggle FPS display with F1
+}
+
 void KeysUp(unsigned char key, int x, int y)
 {
+	// Don't process key releases if console is active
+	if (console.active && key != '`' && key != '~') {
+		return;
+	}
+	
 	if (key == 'w') { K.w = 0; }
 	if (key == 's') { K.s = 0; }
 	if (key == 'a') { K.a = 0; }
@@ -418,43 +627,54 @@ int loadSector[] =
 
 void init() {
 	int x;
-	for (x = 0; x < 360; x++){
-		M.cos[x]=cos(x * 3.14159 / 180);
-		M.sin[x]=sin(x * 3.14159 / 180);
-	} 
+	for (x = 0; x < 360; x++) {
+		M.cos[x] = cos(x * 3.14159 / 180);
+		M.sin[x] = sin(x * 3.14159 / 180);
+	}
 	//init playe
 	P.x = 70; P.y = -110; P.z = 20; P.a = 0; P.l = 0;
 
-	    // Initialize texture 0 (128x128 - raw RGB format)
-    Textures[0].w = T_00_WIDTH;
-    Textures[0].h = T_00_HEIGHT;
-    Textures[0].name = T_00;
-    
-    // Initialize texture 1 (32x32 checkerboard - raw RGB format)
-    Textures[1].w = T_01_WIDTH;
-    Textures[1].h = T_01_HEIGHT;
-    Textures[1].name = T_01;
+	// Initialize FPS counter
+	T.fps = 0;
+	T.frameCount = 0;
+	T.fpsTimer = 0;
+	T.fr1 = 0;
+	T.fr2 = 0;
+	T.showFPS = 0; // FPS counter starts hidden
 
-    //56x56 texture
-    Textures[2].w = T_02_WIDTH;
-    Textures[2].h = T_02_HEIGHT;
-    Textures[2].name = T_02;
+	// Initialize console with screen dimensions
+	initConsole(SW, SH);
 
-    Textures[3].w = T_03_WIDTH;
-    Textures[3].h = T_03_HEIGHT;
-    Textures[3].name = T_03;
+	// Initialize texture 0 (128x128 - raw RGB format)
+	Textures[0].w = T_00_WIDTH;
+	Textures[0].h = T_00_HEIGHT;
+	Textures[0].name = T_00;
 
-    Textures[4].w = T_04_WIDTH;
-    Textures[4].h = T_04_HEIGHT;
-    Textures[4].name = T_04;
+	// Initialize texture 1 (32x32 checkerboard - raw RGB format)
+	Textures[1].w = T_01_WIDTH;
+	Textures[1].h = T_01_HEIGHT;
+	Textures[1].name = T_01;
 
-    Textures[5].w = T_05_WIDTH;
-    Textures[5].h = T_05_HEIGHT;
-    //Textures[5].name = T_05;
+	//56x56 texture
+	Textures[2].w = T_02_WIDTH;
+	Textures[2].h = T_02_HEIGHT;
+	Textures[2].name = T_02;
 
-    Textures[6].w = T_06_WIDTH;
-    Textures[6].h = T_06_HEIGHT;
-    Textures[6].name = T_06;
+	Textures[3].w = T_03_WIDTH;
+	Textures[3].h = T_03_HEIGHT;
+	Textures[3].name = T_03;
+
+	Textures[4].w = T_04_WIDTH;
+	Textures[4].h = T_04_HEIGHT;
+	Textures[4].name = T_04;
+
+	Textures[5].w = T_05_WIDTH;
+	Textures[5].h = T_05_HEIGHT;
+	//Textures[5].name = T_05;
+
+	Textures[6].w = T_06_WIDTH;
+	Textures[6].h = T_06_HEIGHT;
+	Textures[6].name = T_06;
 
 }
 
@@ -470,6 +690,7 @@ int main(int argc, char* argv[]) {
 	glutDisplayFunc(display);
 	glutKeyboardFunc(KeysDown);
 	glutKeyboardUpFunc(KeysUp);
+	glutSpecialFunc(specialKeys); // Register special keys handler
 	glutMainLoop();
 	return 0;
 

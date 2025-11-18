@@ -9,18 +9,6 @@
       <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
       <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
     </Filter>
-    <Filter Include="Resource Files">
-      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
-      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
-    </Filter>
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="DoomTest.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="Oracular_map_editor.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="textures\TEXTURE_TEMPLATE.h">
@@ -29,10 +17,29 @@
     <ClInclude Include="textures\T_01.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="resource.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="console.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="console_font.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="tools\convert_texture.py" />
-    <None Include="TEXTURES_README.md" />
-    <None Include="tools\extract_bmp_to_raw.py" />
+    <None Include="DoomClone.sln" />
+    <None Include="CONSOLE_README.md" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="DoomTest.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="console.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="console_font.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

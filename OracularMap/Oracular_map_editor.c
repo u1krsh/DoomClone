@@ -12,15 +12,15 @@
 #define GLSH SH*pixelScale //open gl window height
 # define M_PI 3.14159265358979323846  /* pi */
 // textures
-#include "textures/number.h"
-#include "textures/oracular_texture.h"
-#include "textures/T_00.h"
-#include "textures/T_01.h"  // Add 32x32 test texture
-#include "textures/T_02.h"
-#include "textures/T_03.h"
-#include "textures/T_04.h"
-#include "textures/T_05.h"
-#include "textures/T_06.h"
+#include "../textures/number.h"
+#include "../textures/oracular_texture.h"
+#include "../textures/T_00.h"
+#include "../textures/T_01.h"  // Add 32x32 test texture
+#include "../textures/T_02.h"
+#include "../textures/T_03.h"
+#include "../textures/T_04.h"
+#include "../textures/T_05.h"
+#include "../textures/T_06.h"
 
 int numText = 7;                          //number of textures (increased from 1 to 2)
 
@@ -101,20 +101,26 @@ void save() //save file
     int w, s;
     FILE* fp = fopen("D:\\PROGRAM\\VSPRO\\DoomClone\\level.h", "w");
     if (fp == NULL) { printf("Error opening the file level.h"); return; }
-    if (numSect == 0) { fclose(fp); return; } //nothing, clear file 
+    if (numSect == 0) { fclose(fp); printf("No sectors to save\n"); return; } //nothing, clear file 
+
+    printf("Saving: %i sectors, %i walls\n", numSect, numWall); // DEBUG
 
     fprintf(fp, "%i\n", numSect); //number of sectors 
     for (s = 0; s < numSect; s++)      //save sector
     {
         fprintf(fp, "%i %i %i %i %i %i\n", S[s].ws, S[s].we, S[s].z1, S[s].z2, S[s].st, S[s].ss);
+        printf("  Sector %i: ws=%i we=%i z1=%i z2=%i st=%i ss=%i\n", s, S[s].ws, S[s].we, S[s].z1, S[s].z2, S[s].st, S[s].ss); // DEBUG
     }
 
     fprintf(fp, "%i\n", numWall); //number of walls
     for (w = 0; w < numWall; w++)      //save walls
     {
         fprintf(fp, "%i %i %i %i %i %i %i %i\n", W[w].x1, W[w].y1, W[w].x2, W[w].y2, W[w].wt, W[w].u, W[w].v, W[w].shade);
+        printf("  Wall %i: (%i,%i)->(%i,%i) wt=%i u=%i v=%i shade=%i\n", w, W[w].x1, W[w].y1, W[w].x2, W[w].y2, W[w].wt, W[w].u, W[w].v, W[w].shade); // DEBUG
     }
     fprintf(fp, "\n%i %i %i %i %i\n", P.x, P.y, P.z, P.a, P.l); //player position 
+    printf("Player: x=%i y=%i z=%i a=%i l=%i\n", P.x, P.y, P.z, P.a, P.l); // DEBUG
+    printf("Saved to level.h successfully!\n"); // DEBUG
     fclose(fp);
 }
 
@@ -406,9 +412,15 @@ void draw2D()
             }
             else { c = 0; } //sector not selected, grey
 
-            drawLine(W[w].x1 / G.scale, W[w].y1 / G.scale, W[w].x2 / G.scale, W[w].y2 / G.scale, 128 + c, 128 + c, 128 - c);
-            drawPixel(W[w].x1 / G.scale, W[w].y1 / G.scale, 255, 255, 255);
-            drawPixel(W[w].x2 / G.scale, W[w].y2 / G.scale, 255, 255, 255);
+            // Flip Y coordinates when drawing (convert from game space to screen space)
+            int sx1 = W[w].x1 / G.scale;
+            int sy1 = (SH * G.scale - W[w].y1) / G.scale;
+            int sx2 = W[w].x2 / G.scale;
+            int sy2 = (SH * G.scale - W[w].y2) / G.scale;
+            
+            drawLine(sx1, sy1, sx2, sy2, 128 + c, 128 + c, 128 - c);
+            drawPixel(sx1, sy1, 255, 255, 255);
+            drawPixel(sx2, sy2, 255, 255, 255);
         }
     }
 
@@ -597,8 +609,8 @@ void mouse(int button, int state, int x, int y)
                 S[numSect].z2 = G.z2;
                 S[numSect].st = G.st;
                 S[numSect].ss = G.ss;
-                W[numWall].x1 = G.mx * G.scale; W[numWall].y1 = G.my * G.scale;  //x1,y1 
-                W[numWall].x2 = G.mx * G.scale; W[numWall].y2 = G.my * G.scale;  //x2,y2
+                W[numWall].x1 = G.mx * G.scale; W[numWall].y1 = (SH - G.my) * G.scale;  //x1,y1 - flip Y
+                W[numWall].x2 = G.mx * G.scale; W[numWall].y2 = (SH - G.my) * G.scale;  //x2,y2 - flip Y
                 W[numWall].wt = G.wt;
                 W[numWall].u = G.wu;
                 W[numWall].v = G.wv;
@@ -618,9 +630,9 @@ void mouse(int button, int state, int x, int y)
                 }
 
                 //point 2
-                W[numWall - 1].x2 = G.mx * G.scale; W[numWall - 1].y2 = G.my * G.scale; //x2,y2
-                //automatic shading 
-                float ang = atan2f(W[numWall - 1].x2 - W[numWall - 1].x1, W[numWall - 1].y2 - W[numWall - 1].y1);
+                W[numWall - 1].x2 = G.mx * G.scale; W[numWall - 1].y2 = (SH - G.my) * G.scale; //x2,y2 - flip Y
+                //automatic shading - FIX: use correct parameter order for atan2f
+                float ang = atan2f(W[numWall - 1].y2 - W[numWall - 1].y1, W[numWall - 1].x2 - W[numWall - 1].x1);
                 ang = (ang * 180) / M_PI;      //radians to degrees
                 if (ang < 0) { ang += 360; }    //correct negative
                 int shade = ang;           //shading goes from 0-90-0-90-0
@@ -641,8 +653,8 @@ void mouse(int button, int state, int x, int y)
                 {
                     //init next wall
                     S[numSect - 1].we += 1;                                      //add 1 to wall end
-                    W[numWall].x1 = G.mx * G.scale; W[numWall].y1 = G.my * G.scale;  //x1,y1 
-                    W[numWall].x2 = G.mx * G.scale; W[numWall].y2 = G.my * G.scale;  //x2,y2
+                    W[numWall].x1 = G.mx * G.scale; W[numWall].y1 = (SH - G.my) * G.scale;  //x1,y1 - flip Y
+                    W[numWall].x2 = G.mx * G.scale; W[numWall].y2 = (SH - G.my) * G.scale;  //x2,y2 - flip Y
                     W[numWall - 1].wt = G.wt;
                     W[numWall - 1].u = G.wu;
                     W[numWall - 1].v = G.wv;
@@ -804,7 +816,7 @@ void init()
 
     Textures[5].w = T_05_WIDTH;
     Textures[5].h = T_05_HEIGHT;
-    //Textures[5].name = T_05;
+    Textures[5].name = T_05;
 
     Textures[6].w = T_06_WIDTH;
     Textures[6].h = T_06_HEIGHT;
@@ -829,4 +841,3 @@ int main(int argc, char* argv[])
     glutMainLoop();
     return 0;
 }
-

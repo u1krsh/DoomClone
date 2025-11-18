@@ -1,0 +1,17 @@
+[
+  {
+    "Name": "BothSussy",
+    "Projects": [
+      {
+        "Path": "DoomClone.vcxproj",
+        "Action": "Start",
+        "DebugTarget": "Local Windows Debugger"
+      },
+      {
+        "Path": "OracularMap\\OracularMap.vcxproj",
+        "Action": "Start",
+        "DebugTarget": "Local Windows Debugger"
+      }
+    ]
+  }
+]
