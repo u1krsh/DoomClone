@@ -15,7 +15,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\TextureEditor\texture_editor.c">
+    <ClCompile Include="texture_editor.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
