@@ -21,8 +21,8 @@
   <PropertyGroup Label="Globals">
     <VCProjectVersion>18.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
-    <ProjectGuid>{99c47de2-bb6f-4c58-bc77-4c0e77e83697}</ProjectGuid>
-    <RootNamespace>DoomClone</RootNamespace>
+    <ProjectGuid>{7860a086-078c-4ab4-9e19-7915ceb4f896}</ProjectGuid>
+    <RootNamespace>TextureEditor</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -127,32 +127,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="console.h" />
-    <ClInclude Include="console_font.h" />
-    <ClInclude Include="resource.h" />
-    <ClInclude Include="resource1.h" />
-    <ClInclude Include="textures\all_textures.h" />
-    <ClInclude Include="textures\WALL57_1.h" />
-    <ClInclude Include="textures\WALL57_2.h" />
-    <ClInclude Include="textures\WALL57_3.h" />
-    <ClInclude Include="textures\WALL57_4.h" />
-    <ClInclude Include="textures\WALL57_anim.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="DoomClone.sln" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="console.c" />
-    <ClCompile Include="console_font.c" />
-    <ClCompile Include="DoomTest.c" />
-  </ItemGroup>
-  <ItemGroup>
-    <ResourceCompile Include="DoomClone1.rc" />
-  </ItemGroup>
-  <ItemGroup>
-    <Text Include="TextureEditor\fixes_applied.txt" />
-    <Text Include="TextureEditor\IMAGE_LOADING_GUIDE.txt" />
-    <Text Include="TextureEditor\INTEGRATION_NOTES.txt" />
+    <ClCompile Include="..\TextureEditor\texture_editor.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

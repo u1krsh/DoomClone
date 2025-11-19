@@ -11,18 +11,17 @@
 #define GLSW SW*pixelScale //open gl window width
 #define GLSH SH*pixelScale //open gl window height
 # define M_PI 3.14159265358979323846  /* pi */
-// textures
-#include "../textures/number.h"
-#include "../textures/oracular_texture.h"
-#include "../textures/T_00.h"
-#include "../textures/T_01.h"  // Add 32x32 test texture
-#include "../textures/T_02.h"
-#include "../textures/T_03.h"
-#include "../textures/T_04.h"
-#include "../textures/T_05.h"
-#include "../textures/T_06.h"
 
-int numText = 7;                          //number of textures (increased from 1 to 2)
+// Consolidated texture includes
+#include "../textures/all_textures.h"
+// Optional animated frames header (defines WALL57_frames array and metadata if available)
+#if defined(__has_include)
+  #if __has_include("../textures/WALL57_anim.h")
+    #include "../textures/WALL57_anim.h"
+  #endif
+#endif
+
+int numText = NUM_TEXTURES - 1;  // Use macro from all_textures.h (max texture index)
 
 int numSect = 0;                          //number of sectors
 int numWall = 0;                          //number of walls
@@ -211,13 +210,31 @@ void drawNumber(int nx, int ny, int n)
     }
 }
 
+// Helper to return current texture data (handles optional animation)
+static const unsigned char* getTextureData(int texIndex, int* outW, int* outH)
+{
+#if defined(WALL57_ANIM_AVAILABLE) && WALL57_ANIM_AVAILABLE == 1
+    int animIndex = NUM_TEXTURES - 1; // animated texture placed at end
+    if (texIndex == animIndex)
+    {
+        int t = glutGet(GLUT_ELAPSED_TIME);
+        int frame = (t / WALL57_FRAME_MS) % WALL57_FRAME_COUNT;
+        *outW = WALL57_FRAME_WIDTH;
+        *outH = WALL57_FRAME_HEIGHT;
+        return WALL57_frames[frame];
+    }
+#endif
+    *outW = Textures[texIndex].w;
+    *outH = Textures[texIndex].h;
+    return Textures[texIndex].name;
+}
+
 // Draw a texture preview in an arbitrary box using drawPixel (scaled by pixelScale) for main window
 static void drawTexturePreview(int texIndex, int destX, int destY, int boxW, int boxH)
 {
     if (texIndex < 0) return;
-    int tw = Textures[texIndex].w;
-    int th = Textures[texIndex].h;
-    const unsigned char* data = Textures[texIndex].name;
+    int tw = 0, th = 0;
+    const unsigned char* data = getTextureData(texIndex, &tw, &th);
     if (!data || tw <= 0 || th <= 0 || boxW <= 0 || boxH <= 0) return;
 
     // Scale to fit while preserving aspect ratio
@@ -291,9 +308,8 @@ static void drawTexturePreview(int texIndex, int destX, int destY, int boxW, int
 static void drawTexturePreviewWindow(int texIndex, int winW, int winH)
 {
     if (texIndex < 0) return;
-    int tw = Textures[texIndex].w;
-    int th = Textures[texIndex].h;
-    const unsigned char* data = Textures[texIndex].name;
+    int tw = 0, th = 0;
+    const unsigned char* data = getTextureData(texIndex, &tw, &th);
     if (!data || tw <= 0 || th <= 0) return;
 
     // Fit texture preserving aspect
@@ -821,6 +837,11 @@ void init()
     Textures[6].w = T_06_WIDTH;
     Textures[6].h = T_06_HEIGHT;
     Textures[6].name = T_06;
+
+    // Initialize animated texture (index 7)
+    Textures[7].w = WALL57_FRAME_WIDTH;
+    Textures[7].h = WALL57_FRAME_HEIGHT;
+    Textures[7].name = WALL57_frames[0];  // Start with first frame
 }
 
 int main(int argc, char* argv[])
@@ -829,7 +850,7 @@ int main(int argc, char* argv[])
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
     glutInitWindowPosition(GLSW / 2, GLSH / 2);
     glutInitWindowSize(GLSW, GLSH);
-    mainWindow = glutCreateWindow("Oracular Map Edit"); // single main window
+    mainWindow = glutCreateWindow("Oracular Map Editor");
     glPointSize(pixelScale);
     gluOrtho2D(0, GLSW, 0, GLSH);
     init();

@@ -11,6 +11,10 @@
         "Path": "OracularMap\\OracularMap.vcxproj",
         "Action": "Start",
         "DebugTarget": "Local Windows Debugger"
+      },
+      {
+        "Path": "Texture_Editor\\Texture_Editor.vcxproj",
+        "Action": "Start"
       }
     ]
   }

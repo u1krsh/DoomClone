@@ -11,25 +11,20 @@ int godMode = 0;
 int noclip = 0;
 void initConsole(int screenWidth, int screenHeight) {
     console.active = 0;
-    console.animating = 0;
     console.slidePos = 0.0f;
-    console.input[0] = '\0';
-    console.inputPos = 0;
-    console.historyCount = 0;
-    console.historyIndex = -1;
+    console.animating = 0;
     console.screenWidth = screenWidth;
     console.screenHeight = screenHeight;
+    console.input[0] = '\0';
+    console.inputPos = 0;
     console.messageCount = 0;
     
-    // Initialize history
-    for (int i = 0; i < CONSOLE_HISTORY_SIZE; i++) {
-        console.history[i][0] = '\0';
-    }
-    
-    // Initialize messages
+    // Clear message history
     for (int i = 0; i < CONSOLE_MESSAGE_LINES; i++) {
         console.messages[i][0] = '\0';
     }
+    
+    consolePrint("Console initialized. Type 'help' for commands.");
 }
 
 void toggleConsole() {
@@ -164,6 +159,7 @@ void consoleExecuteCommand() {
         consolePrint("  noclip - Walk through walls");
         consolePrint("  help - Show this help");
         consolePrint("  clear - Clear console");
+        consolePrint("  text_edit - Launch texture editor");
     }
     else if (strcmp(command, "clear") == 0) {
         // Clear all messages
@@ -172,6 +168,15 @@ void consoleExecuteCommand() {
         }
         console.messageCount = 0;
         consolePrint("Console cleared");
+    }
+    else if (strcmp(command, "text_edit") == 0 || strcmp(command, "textedit") == 0) {
+        consolePrint("Launching Texture Editor...");
+        #ifdef _WIN32
+        // Launch the texture editor executable from the separate project
+        system("start \"\" \"x64\\Debug\\Texture_Editor.exe\"");
+        #else
+        system("./Texture_Editor/Texture_Editor &");
+        #endif
     }
     else if (strlen(command) > 0) {
         consolePrint("That is not a command, bitch");

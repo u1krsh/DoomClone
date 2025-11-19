@@ -5,4 +5,5 @@
   </Configurations>
   <Project Path="DoomClone.vcxproj" Id="99c47de2-bb6f-4c58-bc77-4c0e77e83697" />
   <Project Path="OracularMap/OracularMap.vcxproj" Id="1f9ffff0-b8f1-4da3-ac36-77f8aa78f818" />
+  <Project Path="Texture_Editor/Texture_Editor.vcxproj" Id="7860a086-078c-4ab4-9e19-7915ceb4f896" />
 </Solution>

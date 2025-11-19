@@ -2,7 +2,7 @@
 #include <GL/glut.h>
 #include <math.h>
 
-#define res 1 //resolotion scale
+#define res 1 //resolition scale
 #define SH 240*res //screen height
 #define SW 320*res //screen width
 #define HSH SH/2 //half screen height
@@ -13,21 +13,13 @@
 
 #define M_PI 3.14159265358979323846  /* pi */
 
-// textures
-#include "textures/number.h"
-#include "textures/oracular_texture.h"
-#include "textures/T_00.h"
-#include "textures/T_01.h"  // Add 32x32 test texture
-#include "textures/T_02.h"
-#include "textures/T_03.h"
-#include "textures/T_04.h"
-#include "textures/T_05.h"
-#include "textures/T_06.h"
+// Consolidated texture includes
+#include "textures/all_textures.h"
 
 // Console module
 #include "console.h"
 
-int numText = 7;                          //number of textures (increased from 1 to 2)
+int numText = NUM_TEXTURES - 1;  // Use macro from all_textures.h (max texture index)
 
 int numSect = 0;                          //number of sectors
 int numWall = 0;                          //number of walls
@@ -50,6 +42,10 @@ typedef struct
 	int w, s, a, d;           //move up, down, left, rigth
 	int sl, sr;             //strafe left, right 
 	int m;                 //move up, down, look up, down
+	int showMap;           //toggle automap display
+	int mapActive;         //is map currently active
+	int mapAnimating;      //is map animation in progress
+	float mapSlidePos;     //map slide position (0.0 = hidden, 1.0 = visible)
 }keys;
 keys K;
 
@@ -293,6 +289,28 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 	int x1_orig = x1;
 	int x2_orig = x2;
 
+	// Get current texture data (handles animation)
+	int texWidth = 0, texHeight = 0;
+	const unsigned char* texData = NULL;
+	
+	#if defined(WALL57_ANIM_AVAILABLE) && WALL57_ANIM_AVAILABLE == 1
+	if (wt == NUM_TEXTURES - 1) {
+		// Animated texture
+		int t = glutGet(GLUT_ELAPSED_TIME);
+		int frame = (t / WALL57_FRAME_MS) % WALL57_FRAME_COUNT;
+		texWidth = WALL57_FRAME_WIDTH;
+		texHeight = WALL57_FRAME_HEIGHT;
+		texData = WALL57_frames[frame];
+	}
+	else
+	#endif
+	{
+		// Regular texture
+		texWidth = Textures[wt].w;
+		texHeight = Textures[wt].h;
+		texData = Textures[wt].name;
+	}
+
 	// Calculate dynamic shading based on wall angle relative to player view
 	// Get wall angle in world space (in degrees)
 	float dx_wall = (float)(W[w].x2 - W[w].x1);
@@ -341,13 +359,13 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 		int y2 = dyt * (x - xs + 0.5) / dx + t1;
 
 		// Calculate horizontal texture coordinate using original unclipped coordinates
-		float ht = ((float)(x - x1_orig) / (float)(x2_orig - x1_orig)) * Textures[wt].w * W[w].u;
+		float ht = ((float)(x - x1_orig) / (float)(x2_orig - x1_orig)) * texWidth * W[w].u;
 		
 		// Clamp ht to prevent out-of-bounds access
 		if (ht < 0) ht = 0;
-		if (ht >= Textures[wt].w * W[w].u) ht = Textures[wt].w * W[w].u - 0.001f;
+		if (ht >= texWidth * W[w].u) ht = texWidth * W[w].u - 0.001f;
 		
-		int tx = ((int)ht) % Textures[wt].w;
+		int tx = ((int)ht) % texWidth;
 
 		// Store original y1, y2 for texture coordinate calculation before clipping
 		int y1_orig = y1;
@@ -369,30 +387,30 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 
 			for (y = y1; y < y2; y++) {
 				// Calculate vertical texture coordinate using original unclipped coordinates
-				float vt = ((float)(y - y1_orig) / (float)wall_height) * Textures[wt].h * W[w].v;
+				float vt = ((float)(y - y1_orig) / (float)wall_height) * texHeight * W[w].v;
 				
 				// Clamp vt to prevent out-of-bounds access
 				if (vt < 0) vt = 0;
-				if (vt >= Textures[wt].h * W[w].v) vt = Textures[wt].h * W[w].v - 0.001f;
+				if (vt >= texHeight * W[w].v) vt = texHeight * W[w].v - 0.001f;
 				
-				int ty = ((int)vt) % Textures[wt].h;
+				int ty = ((int)vt) % texHeight;
 
 				// Clamp texture coordinates to valid range
 				if (tx < 0) tx = 0;
-				if (tx >= Textures[wt].w) tx = Textures[wt].w - 1;
+				if (tx >= texWidth) tx = texWidth - 1;
 				if (ty < 0) ty = 0;
-				if (ty >= Textures[wt].h) ty = Textures[wt].h - 1;
+				if (ty >= texHeight) ty = texHeight - 1;
 
 				// Flip vertically and get pixel from texture
-				int pixelN = (Textures[wt].h - ty - 1) * 3 * Textures[wt].w + tx * 3;
+				int pixelN = (texHeight - ty - 1) * 3 * texWidth + tx * 3;
 				
 				// Bounds check for pixel index
-				int maxPixel = Textures[wt].w * Textures[wt].h * 3;
+				int maxPixel = texWidth * texHeight * 3;
 				if (pixelN >= 0 && pixelN + 2 < maxPixel) {
 					// Use dynamic shade instead of static W[w].shade
-					int r = Textures[wt].name[pixelN + 0] - dynamicShade; if (r < 0) { r = 0; }
-					int g = Textures[wt].name[pixelN + 1] - dynamicShade; if (g < 0) { g = 0; }
-					int b = Textures[wt].name[pixelN + 2] - dynamicShade; if (b < 0) { b = 0; }
+					int r = texData[pixelN + 0] - dynamicShade; if (r < 0) { r = 0; }
+					int g = texData[pixelN + 1] - dynamicShade; if (g < 0) { g = 0; }
+					int b = texData[pixelN + 2] - dynamicShade; if (b < 0) { b = 0; }
 					pixel(x, y, r, g, b);
 				}
 			}
@@ -607,6 +625,144 @@ void drawFPS() {
 	}
 }
 
+void drawAutomap() {
+	// Update animation
+	if (K.mapAnimating) {
+		if (K.mapActive) {
+			// Slide down
+			K.mapSlidePos += 0.15f;
+			if (K.mapSlidePos >= 1.0f) {
+				K.mapSlidePos = 1.0f;
+				K.mapAnimating = 0;
+			}
+		} else {
+			// Slide up
+			K.mapSlidePos -= 0.15f;
+			if (K.mapSlidePos <= 0.0f) {
+				K.mapSlidePos = 0.0f;
+				K.mapAnimating = 0;
+			}
+		}
+	}
+	
+	// Don't draw if not visible
+	if (K.mapSlidePos <= 0.0f) return;
+	
+	// Calculate visible height based on slide position
+	int visibleHeight = (int)(SH * K.mapSlidePos);
+	
+	// Map covers full screen width, slides from top
+	int mapX = 0;
+	int mapY = SH - visibleHeight;
+	int mapWidth = SW;
+	int mapHeight = visibleHeight;
+	
+	// Don't draw if too small
+	if (mapHeight < 10) return;
+	
+	int mapScale = 4; // Scale down factor for the map
+	
+	// Draw map background (black)
+	int x, y;
+	for (y = mapY; y < SH; y++) {
+		for (x = 0; x < SW; x++) {
+			pixel(x, y, 0, 0, 0); // Black background
+		}
+	}
+	
+	// Draw bottom border (red line - 2 pixels thick)
+	for (x = 0; x < SW; x++) {
+		pixel(x, mapY, 255, 0, 0); // Red border
+		if (mapY + 1 < SH) {
+			pixel(x, mapY + 1, 255, 0, 0);
+		}
+	}
+	
+	// Calculate map center (player position)
+	int centerX = mapWidth / 2;
+	int centerY = mapY + mapHeight / 2;
+	
+	// Draw walls
+	int s, w;
+	for (s = 0; s < numSect; s++) {
+		for (w = S[s].ws; w < S[s].we; w++) {
+			// Transform wall coordinates relative to player
+			int wx1 = (W[w].x1 - P.x) / mapScale + centerX;
+			int wy1 = (W[w].y1 - P.y) / mapScale + centerY;
+			int wx2 = (W[w].x2 - P.x) / mapScale + centerX;
+			int wy2 = (W[w].y2 - P.y) / mapScale + centerY;
+			
+			// Draw line using Bresenham's algorithm
+			int dx = wx2 - wx1;
+			int dy = wy2 - wy1;
+			int steps = abs(dx) > abs(dy) ? abs(dx) : abs(dy);
+			
+			if (steps > 0) {
+				float xInc = dx / (float)steps;
+				float yInc = dy / (float)steps;
+				float currX = wx1;
+				float currY = wy1;
+				
+				int i;
+				for (i = 0; i <= steps; i++) {
+					int px = (int)currX;
+					int py = (int)currY;
+					
+					// Clip to map bounds
+					if (px >= mapX && px < mapX + mapWidth && py >= mapY && py < mapY + mapHeight) {
+						pixel(px, py, 200, 200, 200); // Gray walls
+					}
+					
+					currX += xInc;
+					currY += yInc;
+				}
+			}
+		}
+	}
+	
+	// Draw player as upside-down cross (ankh/crucifix)
+	// Vertical bar
+	for (y = -6; y <= 2; y++) {
+		pixel(centerX, centerY + y, 255, 0, 0);
+	}
+	// Horizontal bar (top)
+	for (x = -3; x <= 3; x++) {
+		pixel(centerX + x, centerY - 2, 255, 0, 0);
+	}
+	
+	// Draw direction indicator (red line pointing in player's direction)
+	int dirLen = 12; // Length of direction indicator
+	int dirX = centerX + (int)(M.sin[P.a] * dirLen);
+	int dirY = centerY + (int)(M.cos[P.a] * dirLen);
+	
+	// Draw direction line
+	{
+		int dx = dirX - centerX;
+		int dy = dirY - centerY;
+		int steps = abs(dx) > abs(dy) ? abs(dx) : abs(dy);
+		
+		if (steps > 0) {
+			float xInc = dx / (float)steps;
+			float yInc = dy / (float)steps;
+			float currX = centerX;
+			float currY = centerY;
+			
+			int i;
+			for (i = 0; i <= steps; i++) {
+				int px = (int)currX;
+				int py = (int)currY;
+				
+				if (px >= mapX && px < mapX + mapWidth && py >= mapY && py < mapY + mapHeight) {
+					pixel(px, py, 255, 255, 0); // Yellow direction line
+				}
+				
+				currX += xInc;
+				currY += yInc;
+			}
+		}
+	}
+}
+
 void drawConsoleText() {
 	if (console.slidePos <= 0.0f) return;
 	
@@ -671,6 +827,9 @@ void display() {
 		movePl();
 		draw3D();
 		
+		// Draw automap on top of 3D view if active
+		drawAutomap();
+		
 		// Update console animation
 		updateConsole();
 		
@@ -706,6 +865,13 @@ void KeysDown(unsigned char key, int x, int y)
 		return;
 	}
 	
+	// Toggle automap with Tab key (ASCII 9)
+	if (key == 9) {
+		K.mapActive = !K.mapActive;
+		K.mapAnimating = 1;
+		return;
+	}
+	
 	// If console is active, send input to console
 	if (console.active) {
 		consoleHandleKey(key);
@@ -725,6 +891,9 @@ void KeysDown(unsigned char key, int x, int y)
 
 void specialKeys(int key, int x, int y)
 {
+	// Don't process special keys if console is active
+	if (console.active) return;
+	
 	if (key == GLUT_KEY_F1) { T.showFPS = !T.showFPS; } // Toggle FPS display with F1
 }
 
@@ -751,7 +920,7 @@ int loadSector[] =
 	8, 12, 0, 40,5,3,// sector 3
 	12, 16, 0, 40,0,1 // sector 4
 };
-
+ 
 
 void init() {
 	int x;
@@ -769,6 +938,13 @@ void init() {
 	T.fr1 = 0;
 	T.fr2 = 0;
 	T.showFPS = 0; // FPS counter starts hidden
+
+	// Initialize keys
+	K.showMap = 0; // Automap starts hidden
+	K.mapActive = 0;
+	K.mapAnimating = 0;
+	K.mapSlidePos = 0.0f;
+
 
 	// Initialize console with screen dimensions
 	initConsole(SW, SH);
@@ -798,11 +974,16 @@ void init() {
 
 	Textures[5].w = T_05_WIDTH;
 	Textures[5].h = T_05_HEIGHT;
-	//Textures[5].name = T_05;
+	Textures[5].name = T_05;
 
 	Textures[6].w = T_06_WIDTH;
 	Textures[6].h = T_06_HEIGHT;
 	Textures[6].name = T_06;
+
+	// Initialize animated texture (index 7)
+	Textures[7].w = WALL57_FRAME_WIDTH;
+	Textures[7].h = WALL57_FRAME_HEIGHT;
+	Textures[7].name = WALL57_frames[0];  // Start with first frame
 
 	// Load the map automatically at startup
 	load();
@@ -823,6 +1004,4 @@ int main(int argc, char* argv[]) {
 	glutSpecialFunc(specialKeys); // Register special keys handler
 	glutMainLoop();
 	return 0;
-
-
-}////}////
+}

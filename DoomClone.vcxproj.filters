@@ -11,12 +11,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="textures\TEXTURE_TEMPLATE.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="textures\T_01.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="resource.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -26,10 +20,30 @@
     <ClInclude Include="console_font.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="textures\all_textures.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\WALL57_anim.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="resource1.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\WALL57_1.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\WALL57_2.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\WALL57_3.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\WALL57_4.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="DoomClone.sln" />
-    <None Include="CONSOLE_README.md" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="DoomTest.c">
@@ -41,5 +55,13 @@
     <ClCompile Include="console.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="DoomClone1.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="TextureEditor\INTEGRATION_NOTES.txt" />
+    <Text Include="TextureEditor\fixes_applied.txt" />
+    <Text Include="TextureEditor\IMAGE_LOADING_GUIDE.txt" />
   </ItemGroup>
 </Project>
