@@ -12,10 +12,11 @@
 #include "T_05.h"
 #include "T_06.h"
 
-// Total number of textures (0-7 = 8 textures, with 7 being animated)
-#define NUM_TEXTURES 8
+// Total number of textures (0-8 = 9 textures, with 7 and 8 being animated)
+#define NUM_TEXTURES 9
 
-// Include animation header
+// Include animation headers
 #include "WALL57_anim.h"
+#include "WALL58.h"  // WALL58 animation (3 frames)
 
 #endif // ALL_TEXTURES_H

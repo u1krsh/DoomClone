@@ -172,10 +172,10 @@ void consoleExecuteCommand() {
     else if (strcmp(command, "text_edit") == 0 || strcmp(command, "textedit") == 0) {
         consolePrint("Launching Texture Editor...");
         #ifdef _WIN32
-        // Launch the texture editor executable from the separate project
-        system("start \"\" \"x64\\Debug\\Texture_Editor.exe\"");
+        // Launch the Python texture editor
+        system("start python tools\\texture_editor_pro.py");
         #else
-        system("./Texture_Editor/Texture_Editor &");
+        system("python tools/texture_editor_pro.py &");
         #endif
     }
     else if (strlen(command) > 0) {

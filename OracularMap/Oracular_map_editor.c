@@ -14,6 +14,7 @@
 
 // Consolidated texture includes
 #include "../textures/all_textures.h"
+#include "../console_font.h"  // Include console font for text rendering
 // Optional animated frames header (defines WALL57_frames array and metadata if available)
 #if defined(__has_include)
   #if __has_include("../textures/WALL57_anim.h")
@@ -214,14 +215,27 @@ void drawNumber(int nx, int ny, int n)
 static const unsigned char* getTextureData(int texIndex, int* outW, int* outH)
 {
 #if defined(WALL57_ANIM_AVAILABLE) && WALL57_ANIM_AVAILABLE == 1
-    int animIndex = NUM_TEXTURES - 1; // animated texture placed at end
-    if (texIndex == animIndex)
+    int anim57Index = NUM_TEXTURES - 2; // WALL57 animated texture
+    if (texIndex == anim57Index)
     {
         int t = glutGet(GLUT_ELAPSED_TIME);
         int frame = (t / WALL57_FRAME_MS) % WALL57_FRAME_COUNT;
         *outW = WALL57_FRAME_WIDTH;
         *outH = WALL57_FRAME_HEIGHT;
         return WALL57_frames[frame];
+    }
+#endif
+#if defined(WALL58_ANIM_AVAILABLE) && WALL58_ANIM_AVAILABLE == 1
+    int anim58Index = NUM_TEXTURES - 1; // WALL58 animated texture (last one)
+    if (texIndex == anim58Index)
+    {
+        int t = glutGet(GLUT_ELAPSED_TIME);
+        int frame = (t / 150) % WALL58_FRAME_COUNT; // 150ms per frame
+        *outW = WALL58_FRAME_WIDTH;
+        *outH = WALL58_FRAME_HEIGHT;
+        if (frame == 0) return WALL58_frame_0;
+        if (frame == 1) return WALL58_frame_1;
+        return WALL58_frame_2;
     }
 #endif
     *outW = Textures[texIndex].w;
@@ -304,6 +318,70 @@ static void drawTexturePreview(int texIndex, int destX, int destY, int boxW, int
     }
 }
 
+// Helper function to draw text with console font in italic style (for preview window)
+static void drawTextRawItalic(int x, int y, const char* text, int r, int g, int b, int scale)
+{
+    int px = x;
+    int char_index = 0;
+    
+    while (*text) {
+        char c = *text;
+        
+        // Get font data index (ASCII 32-126 mapped to 0-94)
+        if (c >= 32 && c <= 126) {
+            int idx = c - 32;
+            const unsigned char* glyph = font8x8[idx];
+            
+            // Draw character with italic slant (shift pixels based on row)
+            for (int row = 0; row < 8; row++) {
+                unsigned char byte = glyph[row];
+                // Italic effect: shift left as we go down (top rows shift more)
+                int slant = (7 - row) / 3; // Slant amount (top=2, middle=1, bottom=0)
+                
+                for (int col = 0; col < 8; col++) {
+                    if (byte & (1 << col)) {
+                        // Draw scaled pixel with italic slant
+                        for (int sy = 0; sy < scale; sy++) {
+                            for (int sx = 0; sx < scale; sx++) {
+                                int drawX = px + (col + slant) * scale + sx;
+                                // Flip Y coordinate: draw from bottom up (invert row)
+                                int drawY = y + (7 - row) * scale + sy;
+                                drawPixelRaw(drawX, drawY, r, g, b);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        px += (8 + 2) * scale; // 8 pixels wide + 2 pixel spacing, scaled
+        text++;
+        char_index++;
+    }
+}
+
+// Get texture name as string
+static const char* getTextureName(int texIndex)
+{
+    static char name[32];
+    
+    // Texture names mapping
+    switch (texIndex) {
+        case 0: return "T_00";
+        case 1: return "T_01";
+        case 2: return "T_02";
+        case 3: return "T_03";
+        case 4: return "T_04";
+        case 5: return "T_05";
+        case 6: return "T_06";
+        case 7: return "WALL57";
+        case 8: return "WALL58";
+        default:
+            sprintf_s(name, sizeof(name), "TEX_%d", texIndex);
+            return name;
+    }
+}
+
 // Draw into separate preview window using raw pixels filling up to 512x512 while preserving aspect ratio
 static void drawTexturePreviewWindow(int texIndex, int winW, int winH)
 {
@@ -358,6 +436,10 @@ static void drawTexturePreviewWindow(int texIndex, int winW, int winH)
             drawPixelRaw(offx + px, offy + py, r, g, b);
         }
     }
+    
+    // Draw texture name in bottom-left corner (console font, italic, orange, 2x scale)
+    const char* texName = getTextureName(texIndex);
+    drawTextRawItalic(10, 10, texName, 255, 140, 0, 2); // Orange italic text, 2x scale
 }
 
 static void previewDisplay()
@@ -838,10 +920,15 @@ void init()
     Textures[6].h = T_06_HEIGHT;
     Textures[6].name = T_06;
 
-    // Initialize animated texture (index 7)
+    // Initialize animated texture 7 (WALL57 - 4 frames)
     Textures[7].w = WALL57_FRAME_WIDTH;
     Textures[7].h = WALL57_FRAME_HEIGHT;
     Textures[7].name = WALL57_frames[0];  // Start with first frame
+
+    // Initialize animated texture 8 (WALL58 - 3 frames)
+    Textures[8].w = WALL58_FRAME_WIDTH;
+    Textures[8].h = WALL58_FRAME_HEIGHT;
+    Textures[8].name = WALL58_frame_0;  // Start with first frame
 }
 
 int main(int argc, char* argv[])

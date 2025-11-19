@@ -41,9 +41,13 @@
     <ClInclude Include="textures\WALL57_4.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="textures\WALL58.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="DoomClone.sln" />
+    <None Include="tools\texture_editor_pro.py" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="DoomTest.c">
@@ -58,10 +62,5 @@
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="DoomClone1.rc" />
-  </ItemGroup>
-  <ItemGroup>
-    <Text Include="TextureEditor\INTEGRATION_NOTES.txt" />
-    <Text Include="TextureEditor\fixes_applied.txt" />
-    <Text Include="TextureEditor\IMAGE_LOADING_GUIDE.txt" />
   </ItemGroup>
 </Project>

@@ -137,9 +137,11 @@
     <ClInclude Include="textures\WALL57_3.h" />
     <ClInclude Include="textures\WALL57_4.h" />
     <ClInclude Include="textures\WALL57_anim.h" />
+    <ClInclude Include="textures\WALL58.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="DoomClone.sln" />
+    <None Include="tools\texture_editor_pro.py" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="console.c" />
@@ -148,11 +150,6 @@
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="DoomClone1.rc" />
-  </ItemGroup>
-  <ItemGroup>
-    <Text Include="TextureEditor\fixes_applied.txt" />
-    <Text Include="TextureEditor\IMAGE_LOADING_GUIDE.txt" />
-    <Text Include="TextureEditor\INTEGRATION_NOTES.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

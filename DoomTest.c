@@ -294,13 +294,26 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 	const unsigned char* texData = NULL;
 	
 	#if defined(WALL57_ANIM_AVAILABLE) && WALL57_ANIM_AVAILABLE == 1
-	if (wt == NUM_TEXTURES - 1) {
-		// Animated texture
+	if (wt == NUM_TEXTURES - 2) {  // WALL57 is second-to-last
+		// Animated texture WALL57
 		int t = glutGet(GLUT_ELAPSED_TIME);
 		int frame = (t / WALL57_FRAME_MS) % WALL57_FRAME_COUNT;
 		texWidth = WALL57_FRAME_WIDTH;
 		texHeight = WALL57_FRAME_HEIGHT;
 		texData = WALL57_frames[frame];
+	}
+	else
+	#endif
+	#if defined(WALL58_ANIM_AVAILABLE) && WALL58_ANIM_AVAILABLE == 1
+	if (wt == NUM_TEXTURES - 1) {  // WALL58 is last
+		// Animated texture WALL58
+		int t = glutGet(GLUT_ELAPSED_TIME);
+		int frame = (t / 150) % WALL58_FRAME_COUNT;  // 150ms per frame
+		texWidth = WALL58_FRAME_WIDTH;
+		texHeight = WALL58_FRAME_HEIGHT;
+		if (frame == 0) texData = WALL58_frame_0;
+		else if (frame == 1) texData = WALL58_frame_1;
+		else texData = WALL58_frame_2;
 	}
 	else
 	#endif
@@ -980,10 +993,15 @@ void init() {
 	Textures[6].h = T_06_HEIGHT;
 	Textures[6].name = T_06;
 
-	// Initialize animated texture (index 7)
+	// Initialize animated texture 7 (WALL57 - 4 frames)
 	Textures[7].w = WALL57_FRAME_WIDTH;
 	Textures[7].h = WALL57_FRAME_HEIGHT;
 	Textures[7].name = WALL57_frames[0];  // Start with first frame
+
+	// Initialize animated texture 8 (WALL58 - 3 frames)
+	Textures[8].w = WALL58_FRAME_WIDTH;
+	Textures[8].h = WALL58_FRAME_HEIGHT;
+	Textures[8].name = WALL58_frame_0;  // Start with first frame
 
 	// Load the map automatically at startup
 	load();
