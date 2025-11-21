@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <GL/glut.h>
 
-#define res 1 //resolition scale
+#define res 1 //resolition 
 #define SH 120*res //screen height
 #define SW 160*res //screen width
 #define HSH SH/2 //half screen height
