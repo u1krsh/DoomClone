@@ -20,13 +20,52 @@
     <ClInclude Include="console_font.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="resource1.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="level.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="screen_melt.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="fps_counter.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="automap.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="textures\all_textures.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="textures\WALL57_anim.h">
+    <ClInclude Include="textures\number.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="resource1.h">
+    <ClInclude Include="textures\oracular_texture.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\T_00.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\T_01.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\T_02.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\T_03.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\T_04.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\T_05.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\T_06.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\TEXTURE_TEMPLATE.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="textures\WALL57_1.h">
@@ -41,7 +80,16 @@
     <ClInclude Include="textures\WALL57_4.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="textures\WALL57_anim.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="textures\WALL58.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\BOSSA1.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="enemy.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -50,13 +98,22 @@
     <None Include="tools\texture_editor_pro.py" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="DoomTest.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="console_font.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="console.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DoomTest.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="screen_melt.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="fps_counter.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="automap.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

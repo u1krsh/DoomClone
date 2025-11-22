@@ -11,6 +11,7 @@
 #include "T_04.h"
 #include "T_05.h"
 #include "T_06.h"
+#include "BOSSA1.h"
 
 // Total number of textures (0-8 = 9 textures, with 7 and 8 being animated)
 #define NUM_TEXTURES 9

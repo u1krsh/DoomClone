@@ -2,7 +2,7 @@
 #include <GL/glut.h>
 #include <math.h>
 
-#define res 1 //resolition scale
+#define res 1 //resolution scale
 #define SH 240*res //screen height
 #define SW 320*res //screen width
 #define HSH SH/2 //half screen height
@@ -19,6 +19,18 @@
 // Console module
 #include "console.h"
 
+// Screen melt module
+#include "screen_melt.h"
+
+// FPS counter module
+#include "fps_counter.h"
+
+// Automap module
+#include "automap.h"
+
+// Enemy system
+#include "enemy.h"
+
 int numText = NUM_TEXTURES - 1;  // Use macro from all_textures.h (max texture index)
 
 int numSect = 0;                          //number of sectors
@@ -30,10 +42,6 @@ int numWall = 0;                          //number of walls
 
 typedef struct {
 	int fr1, fr2; // these are frame 1 and 2 for a constant frame rate
-	int fps;      // current FPS
-	int frameCount; // frame counter
-	int fpsTimer;   // timer for FPS calculation
-	int showFPS;    // toggle FPS display
 }time;
 time T;
 
@@ -42,10 +50,6 @@ typedef struct
 	int w, s, a, d;           //move up, down, left, rigth
 	int sl, sr;             //strafe left, right 
 	int m;                 //move up, down, look up, down
-	int showMap;           //toggle automap display
-	int mapActive;         //is map currently active
-	int mapAnimating;      //is map animation in progress
-	float mapSlidePos;     //map slide position (0.0 = hidden, 1.0 = visible)
 }keys;
 keys K;
 
@@ -90,6 +94,13 @@ typedef struct {
 	const unsigned char* name;           //texture name
 }TextureMaps; TextureMaps Textures[64]; //increase for more textures  
 
+// Depth buffer for sprite rendering
+float depthBuffer[SW];
+
+// Forward declarations
+void drawEnemies();
+void drawConsoleText();
+void drawWallDebugOverlay();
 
 void load()
 {
@@ -436,341 +447,257 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 	}
 }
 
-void draw3D() { // real sussy baka
-	int wx[4], wy[4], wz[4];// world x and y
-	float CS = M.cos[P.a]; //player cos and sin
+void draw3D() {
+	int wx[4], wy[4], wz[4];
+	float CS = M.cos[P.a];
 	float SN = M.sin[P.a];
 	int s, w, frontBack, cycles, x;
-	//order sector by distace
+	
+	// Initialize depth buffer
+	for (x = 0; x < SW; x++) {
+		depthBuffer[x] = 99999.0f; // Far distance
+	}
+	
+	//order sector by distance
 	for (s = 0; s < numSect - 1; s++) {
 		for (w = 0; w < numSect - s - 1; w++) {
 			if (S[w].d < S[w + 1].d) {
-				sectors st = S[w];//temp sector
+				sectors st = S[w];
 				S[w] = S[w + 1];
 				S[w + 1] = st;
 			}
 		}
 	}
 
-
-
-
 	//draw sectors
 	for (s = 0; s < numSect; s++) {
-		S[s].d = 0; // clear distance 
-		if (P.z < S[s].z1) { S[s].surface = 1; cycles = 2; for (x = 0; x < SW; x++) { S[s].surf[x] = SH; } }//bottom surface
-		else if (P.z > S[s].z2) { S[s].surface = 2; cycles = 2; for (x = 0; x < SW; x++) { S[s].surf[x] = 0; } }//top surface
-		else { S[s].surface = 0; cycles = 1; }// no surface
-
+		S[s].d = 0;
+		if (P.z < S[s].z1) { S[s].surface = 1; cycles = 2; for (x = 0; x < SW; x++) { S[s].surf[x] = SH; } }
+		else if (P.z > S[s].z2) { S[s].surface = 2; cycles = 2; for (x = 0; x < SW; x++) { S[s].surf[x] = 0; } }
+		else { S[s].surface = 0; cycles = 1; }
 
 		for (frontBack = 0; frontBack < cycles; frontBack++) {
-
 			for (w = S[s].ws; w < S[s].we; w++) {
-
-				// offset bottom two points of player
 				int x1 = W[w].x1 - P.x, y1 = W[w].y1 - P.y;
 				int x2 = W[w].x2 - P.x, y2 = W[w].y2 - P.y;
 
-				//swap for surfaces
 				if (frontBack == 1) { int swp = x1; x1 = x2; x2 = swp; swp = y1; y1 = y2; y2 = swp; }
 
-
-				//world X position
 				wx[0] = x1 * CS - y1 * SN;
 				wx[1] = x2 * CS - y2 * SN;
 				wx[2] = wx[0];
 				wx[3] = wx[1];
 
-				//world Y position
 				wy[0] = x1 * SN + y1 * CS;
 				wy[1] = x2 * SN + y2 * CS;
 				wy[2] = wy[0];
 				wy[3] = wy[1];
 
-				S[s].d = dist(0, 0, (wx[0] + wx[1]) / 2, (wy[0] + wy[1]) / 2); // store wall distance
+				S[s].d = dist(0, 0, (wx[0] + wx[1]) / 2, (wy[0] + wy[1]) / 2);
 
-				// world Z position
 				wz[0] = S[s].z1 - P.z + ((P.l * wy[0]) / 32.0);
 				wz[1] = S[s].z1 - P.z + ((P.l * wy[1]) / 32.0);
 				wz[2] = S[s].z2 - P.z + ((P.l * wy[0]) / 32.0);
 				wz[3] = S[s].z2 - P.z + ((P.l * wy[1]) / 32.0);
 
-				//dont draw if behinde player - FIXED: use continue instead of return
-				if (wy[0] < 1 && wy[1] < 1) { continue; } //dont draw this wall behind player, but continue with next wall
-
-				//point 1 behind player
+				if (wy[0] < 1 && wy[1] < 1) { continue; }
 
 				if (wy[0] < 1) {
-					clipBehindPlayer(&wx[0], &wy[0], &wz[0], wx[1], wy[1], wz[1]);//bottom
-					clipBehindPlayer(&wx[2], &wy[2], &wz[2], wx[3], wy[3], wz[3]);// top
+					clipBehindPlayer(&wx[0], &wy[0], &wz[0], wx[1], wy[1], wz[1]);
+					clipBehindPlayer(&wx[2], &wy[2], &wz[2], wx[3], wy[3], wz[3]);
 				}
 
-				// point 2 behind player
 				if (wy[1] < 1) {
-					clipBehindPlayer(&wx[1], &wy[1], &wz[1], wx[0], wy[0], wz[0]);//bottom
-					clipBehindPlayer(&wx[3], &wy[3], &wz[3], wx[2], wy[2], wz[2]);// top
+					clipBehindPlayer(&wx[1], &wy[1], &wz[1], wx[0], wy[0], wz[0]);
+					clipBehindPlayer(&wx[3], &wy[3], &wz[3], wx[2], wy[2], wz[2]);
 				}
 
-				//screen x y position
+				// Store depth information
+				float depth0 = wy[0];
+				float depth1 = wy[1];
+
 				wx[0] = wx[0] * 200 / wy[0] + HSW;
 				wy[0] = wz[0] * 200 / wy[0] + HSH;
 				wx[1] = wx[1] * 200 / wy[1] + HSW; wy[1] = wz[1] * 200 / wy[1] + HSH;
 				wx[2] = wx[2] * 200 / wy[2] + HSW; wy[2] = wz[2] * 200 / wy[2] + HSH;
 				wx[3] = wx[3] * 200 / wy[3] + HSW; wy[3] = wz[3] * 200 / wy[3] + HSH;
-				//draw points 
-				//if (wx[0] > 0 && wz[0] < SW && wy[0]>0 && wy[0] < SH) { pixel(wx[0], wy[0], 0); }
-				//if (wx[1] > 0 && wz[1] < SW && wy[1]>0 && wy[1] < SH) { pixel(wx[1], wy[1], 0); }
+
+				// Update depth buffer for this wall segment
+				int startX = wx[0] < wx[1] ? wx[0] : wx[1];
+				int endX = wx[0] > wx[1] ? wx[0] : wx[1];
+				if (startX < 0) startX = 0;
+				if (endX >= SW) endX = SW - 1;
+				
+				for (x = startX; x <= endX; x++) {
+					float t = (endX - startX) > 0 ? (float)(x - startX) / (float)(endX - startX) : 0.0f;
+					float depth = depth0 + (depth1 - depth0) * t;
+					if (depth < depthBuffer[x]) {
+						depthBuffer[x] = depth;
+					}
+				}
+
 				drawWall(wx[0], wx[1], wy[0], wy[1], wy[2], wy[3], s, w, frontBack);
 			}
-			S[s].d /= (S[s].we - S[s].ws); // average
+			S[s].d /= (S[s].we - S[s].ws);
 		}
 	}
+	
+	// Draw enemies as sprites (after walls, before UI)
+	drawEnemies();
 }
 
-//void testTextures() {
-//	int x, y, t;
-//	t = 0;
-//	for (y = 0; y < Textures[t].h; y++) {
-//		for (x = 0; x < Textures[t].w; x++) {
-//			int pixelN = (Textures[t].h-y-1) * 3* Textures[t].w + x * 3;
-//			int r = Textures[t].name[pixelN + 0];
-//			int g = Textures[t].name[pixelN + 1];
-//			int b = Textures[t].name[pixelN + 2];
-//			pixel(x, y, r, g, b);
-//		}
-//	}
-//}
-
-
-void floors() {
-	int x, y;
-	int xo = SW / 2; //x offset
-	int yo = SH / 2; // y offset
-	float fov = 200.0;
-	float lookUpDown = P.l * 2; if (lookUpDown > SH) { lookUpDown = SH; }
-	for (y = -yo; y < -lookUpDown; y++) {
-		for (x = -xo; x < xo; x++) {
-			float fx = x / (float)y;
-			float fy = fov / (float)y;
-
-			float rx = fx * M.sin[P.a] - fy * M.cos[P.a] + (P.y / 30.0);
-			float ry = fx * M.cos[P.a] - fy * M.sin[P.a] - (P.x / 30.0);
-			if (rx < 0) { rx = -rx + 1; }
-			if (ry < 0) { ry -= ry + 1; }
-
-			if ((int)rx % 2 == (int)ry % 2) { pixel(x + xo, y + yo, 0, 60, 130); }
-			else { pixel(x + xo, y + yo, 0, 60, 130); }
-		}
-	}
-}
-
-void drawNumber(int n, int x, int y) {
-	int i, s, xo, yo;
-	s = n;
-	if (s == 0) { xo = 0; yo = 0; } // 0
-	if (s == 1) { xo = 16; yo = 0; } // 1
-	if (s == 2) { xo = 32; yo = 0; } // 2
-	if (s == 3) { xo = 48; yo = 0; } // 3
-	if (s == 4) { xo = 64; yo = 0; } // 4
-	if (s == 5) { xo = 80; yo = 0; } // 5
-	if (s == 6) { xo = 96; yo = 0; } // 6
-	if (s == 7) { xo = 112; yo = 0; } // 7
-	if (s == 8) { xo = 128; yo = 0; } // 8
-	if (s == 9) { xo = 144; yo = 0; } // 9
-
-	int sx, sy;
-	for (sy = 0; sy < 16; sy++) {
-		for (sx = 0; sx < 16; sx++) {
-			i = (sy * 160 + xo + sx) * 3;
-			if (T_NUMBERS[i] > 0) {
-				pixel(x + sx, y + sy, T_NUMBERS[i], T_NUMBERS[i + 1], T_NUMBERS[i + 2]);
-			}
-		}
-	}
-}
-
-// Simple 3x5 pixel font for digits 0-9
-void drawDigit(int digit, int x, int y, int r, int g, int b) {
-	// Each digit is 3 pixels wide, 5 pixels tall
-	int patterns[10][5] = {
-		{0x7, 0x5, 0x5, 0x5, 0x7}, // 0
-		{0x2, 0x6, 0x2, 0x2, 0x7}, // 1
-		{0x7, 0x1, 0x7, 0x4, 0x7}, // 2
-		{0x7, 0x1, 0x7, 0x1, 0x7}, // 3
-		{0x5, 0x5, 0x7, 0x1, 0x1}, // 4
-		{0x7, 0x4, 0x7, 0x1, 0x7}, // 5
-		{0x7, 0x4, 0x7, 0x5, 0x7}, // 6
-		{0x7, 0x1, 0x1, 0x1, 0x1}, // 7
-		{0x7, 0x5, 0x7, 0x5, 0x7}, // 8
-		{0x7, 0x5, 0x7, 0x1, 0x7}  // 9
-	};
+// Draw enemies as billboarded sprites
+void drawEnemies() {
+	if (!enemiesEnabled) return;  // Skip drawing if enemies are disabled
 	
-	if (digit < 0 || digit > 9) return;
+	int i;
+	float CS = M.cos[P.a];
+	float SN = M.sin[P.a];
 	
-	int row, col;
-	for (row = 0; row < 5; row++) {
-		for (col = 0; col < 3; col++) {
-			if (patterns[digit][row] & (1 << (2 - col))) {
-				pixel(x + col, y + row, r, g, b);
-			}
-		}
-	}
-}
-
-void drawFPS() {
-	// Draw FPS value in top-left corner
-	int fps = T.fps;
-	int x = 5;
-	int y = SH - 10;
+	// Create array to sort enemies by distance
+	typedef struct {
+		int index;
+		float distance;
+	} EnemySort;
 	
-	// Draw each digit of the FPS
-	if (fps >= 100) {
-		drawDigit((fps / 100) % 10, x, y, 255, 255, 255);
-		drawDigit((fps / 10) % 10, x + 4, y, 255, 255, 255);
-		drawDigit(fps % 10, x + 8, y, 255, 255, 255);
-	}
-	else if (fps >= 10) {
-		drawDigit((fps / 10) % 10, x, y, 255, 255, 255);
-		drawDigit(fps % 10, x + 4, y, 255, 255, 255);
-	}
-	else {
-		drawDigit(fps % 10, x, y, 255, 255, 255);
-	}
-}
-
-void drawAutomap() {
-	// Update animation
-	if (K.mapAnimating) {
-		if (K.mapActive) {
-			// Slide down
-			K.mapSlidePos += 0.15f;
-			if (K.mapSlidePos >= 1.0f) {
-				K.mapSlidePos = 1.0f;
-				K.mapAnimating = 0;
-			}
-		} else {
-			// Slide up
-			K.mapSlidePos -= 0.15f;
-			if (K.mapSlidePos <= 0.0f) {
-				K.mapSlidePos = 0.0f;
-				K.mapAnimating = 0;
-			}
-		}
-	}
+	EnemySort sortedEnemies[MAX_ENEMIES];
+	int sortCount = 0;
 	
-	// Don't draw if not visible
-	if (K.mapSlidePos <= 0.0f) return;
-	
-	// Calculate visible height based on slide position
-	int visibleHeight = (int)(SH * K.mapSlidePos);
-	
-	// Map covers full screen width, slides from top
-	int mapX = 0;
-	int mapY = SH - visibleHeight;
-	int mapWidth = SW;
-	int mapHeight = visibleHeight;
-	
-	// Don't draw if too small
-	if (mapHeight < 10) return;
-	
-	int mapScale = 4; // Scale down factor for the map
-	
-	// Draw map background (black)
-	int x, y;
-	for (y = mapY; y < SH; y++) {
-		for (x = 0; x < SW; x++) {
-			pixel(x, y, 0, 0, 0); // Black background
-		}
-	}
-	
-	// Draw bottom border (red line - 2 pixels thick)
-	for (x = 0; x < SW; x++) {
-		pixel(x, mapY, 255, 0, 0); // Red border
-		if (mapY + 1 < SH) {
-			pixel(x, mapY + 1, 255, 0, 0);
-		}
-	}
-	
-	// Calculate map center (player position)
-	int centerX = mapWidth / 2;
-	int centerY = mapY + mapHeight / 2;
-	
-	// Draw walls
-	int s, w;
-	for (s = 0; s < numSect; s++) {
-		for (w = S[s].ws; w < S[s].we; w++) {
-			// Transform wall coordinates relative to player
-			int wx1 = (W[w].x1 - P.x) / mapScale + centerX;
-			int wy1 = (W[w].y1 - P.y) / mapScale + centerY;
-			int wx2 = (W[w].x2 - P.x) / mapScale + centerX;
-			int wy2 = (W[w].y2 - P.y) / mapScale + centerY;
-			
-			// Draw line using Bresenham's algorithm
-			int dx = wx2 - wx1;
-			int dy = wy2 - wy1;
-			int steps = abs(dx) > abs(dy) ? abs(dx) : abs(dy);
-			
-			if (steps > 0) {
-				float xInc = dx / (float)steps;
-				float yInc = dy / (float)steps;
-				float currX = wx1;
-				float currY = wy1;
-				
-				int i;
-				for (i = 0; i <= steps; i++) {
-					int px = (int)currX;
-					int py = (int)currY;
-					
-					// Clip to map bounds
-					if (px >= mapX && px < mapX + mapWidth && py >= mapY && py < mapY + mapHeight) {
-						pixel(px, py, 200, 200, 200); // Gray walls
-					}
-					
-					currX += xInc;
-					currY += yInc;
-				}
-			}
-		}
-	}
-	
-	// Draw player as upside-down cross (ankh/crucifix)
-	// Vertical bar
-	for (y = -6; y <= 2; y++) {
-		pixel(centerX, centerY + y, 255, 0, 0);
-	}
-	// Horizontal bar (top)
-	for (x = -3; x <= 3; x++) {
-		pixel(centerX + x, centerY - 2, 255, 0, 0);
-	}
-	
-	// Draw direction indicator (red line pointing in player's direction)
-	int dirLen = 12; // Length of direction indicator
-	int dirX = centerX + (int)(M.sin[P.a] * dirLen);
-	int dirY = centerY + (int)(M.cos[P.a] * dirLen);
-	
-	// Draw direction line
-	{
-		int dx = dirX - centerX;
-		int dy = dirY - centerY;
-		int steps = abs(dx) > abs(dy) ? abs(dx) : abs(dy);
+	// Calculate distances and prepare for sorting
+	for (i = 0; i < numEnemies; i++) {
+		if (!enemies[i].active) continue;
 		
-		if (steps > 0) {
-			float xInc = dx / (float)steps;
-			float yInc = dy / (float)steps;
-			float currX = centerX;
-			float currY = centerY;
+		int relX = enemies[i].x - P.x;
+		int relY = enemies[i].y - P.y;
+		
+		float distance = sqrt(relX * relX + relY * relY);
+		sortedEnemies[sortCount].index = i;
+		sortedEnemies[sortCount].distance = distance;
+		sortCount++;
+	}
+	
+	// Sort enemies by distance (furthest first) using bubble sort
+	for (i = 0; i < sortCount - 1; i++) {
+		for (int j = 0; j < sortCount - i - 1; j++) {
+			if (sortedEnemies[j].distance < sortedEnemies[j + 1].distance) {
+				EnemySort temp = sortedEnemies[j];
+				sortedEnemies[j] = sortedEnemies[j + 1];
+				sortedEnemies[j + 1] = temp;
+			}
+		}
+	}
+	
+	// Draw enemies from furthest to closest
+	for (int enemyIdx = 0; enemyIdx < sortCount; enemyIdx++) {
+		i = sortedEnemies[enemyIdx].index;
+		
+		// Transform enemy position to camera space (use floats to reduce jitter)
+		float relX = (float)(enemies[i].x - P.x);
+		float relY = (float)(enemies[i].y - P.y);
+		float relZ = (float)(enemies[i].z - P.z);
+		
+		// Rotate to camera space
+		float camX = relX * CS - relY * SN;
+		float camY = relX * SN + relY * CS;
+		
+		// Skip if behind player
+		if (camY < 1.0f) continue;
+		
+		// Apply look up/down adjustment to Z position
+		float adjustedZ = relZ + (P.l * camY) / 32.0f;
+		
+		// Project to screen (use float for stability)
+		float screenXf = camX * 200.0f / camY + HSW;
+		float screenYf = adjustedZ * 200.0f / camY + HSH;
+		
+		int screenX = (int)(screenXf);
+		int screenY = (int)(screenYf);
+		
+		// Calculate sprite size based on distance
+		float scale = 200.0f / camY;
+		int spriteHeight = (int)(BOSSA1_HEIGHT * scale);
+		int spriteWidth = (int)(BOSSA1_WIDTH * scale);
+		
+		// Ensure minimum size
+		if (spriteWidth < 1) spriteWidth = 1;
+		if (spriteHeight < 1) spriteHeight = 1;
+		
+		int x, y;
+		int halfW = spriteWidth / 2;
+		int halfH = spriteHeight / 2;
+		
+		// Calculate bounds
+		int startY = screenY - halfH;
+		int endY = screenY + halfH;
+		int startX = screenX - halfW;
+		int endX = screenX + halfW;
+		
+		// Draw sprite with depth testing
+		for (y = startY; y < endY; y++) {
+			if (y < 0 || y >= SH) continue;
 			
-			int i;
-			for (i = 0; i <= steps; i++) {
-				int px = (int)currX;
-				int py = (int)currY;
+			for (x = startX; x < endX; x++) {
+				if (x < 0 || x >= SW) continue;
 				
-				if (px >= mapX && px < mapX + mapWidth && py >= mapY && py < mapY + mapHeight) {
-					pixel(px, py, 255, 255, 0); // Yellow direction line
-				}
+				// Depth test - only draw if sprite is closer than wall
+				if (camY > depthBuffer[x]) continue;
 				
-				currX += xInc;
-				currY += yInc;
+				// Calculate texture coordinates
+				float u = (float)(x - startX) / (float)spriteWidth;
+				float v = (float)(y - startY) / (float)spriteHeight;
+				
+				// Clamp UV coordinates
+				if (u < 0.0f) u = 0.0f;
+				if (u >= 1.0f) u = 0.999f;
+				if (v < 0.0f) v = 0.0f;
+				if (v >= 1.0f) v = 0.999f;
+				
+				// Convert UV to texture pixel coordinates
+				int tx = (int)(u * BOSSA1_WIDTH);
+				int ty = (int)(v * BOSSA1_HEIGHT);
+				
+				// Flip vertically (sprite data is stored bottom-to-top like BMP)
+				ty = BOSSA1_HEIGHT - 1 - ty;
+				
+				// Clamp texture coordinates (safety)
+				if (tx < 0) tx = 0;
+				if (tx >= BOSSA1_WIDTH) tx = BOSSA1_WIDTH - 1;
+				if (ty < 0) ty = 0;
+				if (ty >= BOSSA1_HEIGHT) ty = BOSSA1_HEIGHT - 1;
+				
+				// Get pixel from sprite (RGB format, 3 bytes per pixel)
+				// Row-major order: row 0 is at bottom, each row has BOSSA1_WIDTH pixels
+				int pixelIndex = (ty * BOSSA1_WIDTH + tx) * 3;
+				
+				// Bounds check
+				if (pixelIndex < 0 || pixelIndex + 2 >= BOSSA1_WIDTH * BOSSA1_HEIGHT * 3) continue;
+				
+				// Read RGB values
+				int r = (unsigned char)BOSSA1[pixelIndex + 0];
+				int g = (unsigned char)BOSSA1[pixelIndex + 1];
+				int b = (unsigned char)BOSSA1[pixelIndex + 2];
+				
+				// Skip transparent pixels (pure black in this sprite format)
+				if (r == 0 && g == 0 && b == 0) continue;
+				
+				// Apply distance-based shading (like walls)
+				float shadeFactor = 1.0f - (camY / 800.0f);
+				if (shadeFactor < 0.3f) shadeFactor = 0.3f;
+				if (shadeFactor > 1.0f) shadeFactor = 1.0f;
+				
+				r = (int)(r * shadeFactor);
+				g = (int)(g * shadeFactor);
+				b = (int)(b * shadeFactor);
+				
+				// Clamp final values
+				if (r > 255) r = 255; if (r < 0) r = 0;
+				if (g > 255) g = 255; if (g < 0) g = 0;
+				if (b > 255) b = 255; if (b < 0) b = 0;
+				
+				pixel(x, y, r, g, b);
+				
+				// Update depth buffer so enemies occlude each other
+				depthBuffer[x] = camY;
 			}
 		}
 	}
@@ -779,32 +706,30 @@ void drawAutomap() {
 void drawConsoleText() {
 	if (console.slidePos <= 0.0f) return;
 	
-	// Calculate console height based on screen height percentage
 	int consoleHeight = (int)(SH * CONSOLE_HEIGHT_PERCENT * console.slidePos);
 	int x, y;
 	
-	// Draw semi-transparent console background
+	// Draw console background
 	for (y = SH - consoleHeight; y < SH; y++) {
 		for (x = 0; x < SW; x++) {
-			pixel(x, y, 0, 0, 0); // Black background
+			pixel(x, y, 0, 0, 0);
 		}
 	}
 	
 	// Draw console border
 	for (x = 0; x < SW; x++) {
-		pixel(x, SH - consoleHeight, 255, 255, 0); // Yellow border
+		pixel(x, SH - consoleHeight, 255, 255, 0);
 	}
 	
-	// Calculate font scale based on resolution (1 for low res, 2 for medium, 3+ for high)
 	int fontScale = 1;
 	if (SH >= 480) fontScale = 2;
 	if (SH >= 720) fontScale = 3;
 	if (SH >= 1080) fontScale = 4;
 	
-	int lineHeight = 10 * fontScale; // Height of each text line
+	int lineHeight = 10 * fontScale;
 	
-	// Draw message history (from top of console downward)
-	int messageY = SH - consoleHeight + (5 * fontScale); // Start below border
+	// Draw message history
+	int messageY = SH - consoleHeight + (5 * fontScale);
 	for (int i = 0; i < console.messageCount && i < CONSOLE_MESSAGE_LINES; i++) {
 		if (console.messages[i][0] != '\0') {
 			drawStringScaled(5 * fontScale, messageY, console.messages[i], 255, 255, 255, fontScale, pixel);
@@ -812,23 +737,93 @@ void drawConsoleText() {
 		}
 	}
 	
-	// Draw prompt ">" and input text at bottom
-	int textY = SH - lineHeight; // Position from bottom
-	int textX = 5 * fontScale; // Scaled margin
+	// Draw prompt and input
+	int textY = SH - lineHeight;
+	int textX = 5 * fontScale;
 	
-	// Draw ">" prompt using the scaled font
 	drawCharScaled(textX, textY, '>', 255, 255, 0, fontScale, pixel);
-	
-	textX += (10 * fontScale); // Move past the prompt (scaled spacing)
-	
-	// Draw input text using the scaled bitmap font
+	textX += (10 * fontScale);
 	drawStringScaled(textX, textY, console.input, 255, 255, 255, fontScale, pixel);
 	
-	// Draw cursor (blinking)
-	int cursorX = textX + (console.inputPos * 8 * fontScale); // 8 pixels per character * scale
-	if ((T.fr1 / 500) % 2 == 0) { // Blink every 500ms
-		// Draw underscore cursor
+	// Draw cursor
+	int cursorX = textX + (console.inputPos * 8 * fontScale);
+	if ((T.fr1 / 500) % 2 == 0) {
 		drawCharScaled(cursorX, textY, '_', 255, 255, 0, fontScale, pixel);
+	}
+}
+
+// Draw wall collision zones for debug visualization
+void drawWallDebugOverlay() {
+	if (!isFPSDisplayEnabled()) return;
+	
+	int s, w;
+	float CS = M.cos[P.a];
+	float SN = M.sin[P.a];
+	
+	// Draw wall collision zones
+	for (s = 0; s < numSect; s++) {
+		for (w = S[s].ws; w < S[s].we; w++) {
+			// Transform wall endpoints to camera space
+			int x1 = W[w].x1 - P.x;
+			int y1 = W[w].y1 - P.y;
+			int x2 = W[w].x2 - P.x;
+			int y2 = W[w].y2 - P.y;
+			
+			// Rotate to camera space
+			float camX1 = x1 * CS - y1 * SN;
+			float camY1 = x1 * SN + y1 * CS;
+			float camX2 = x2 * CS - y2 * SN;
+			float camY2 = x2 * SN + y2 * CS;
+			
+			// Skip if both points are behind player
+			if (camY1 < 1.0f && camY2 < 1.0f) continue;
+			
+			// Clip if needed
+			if (camY1 < 1.0f) {
+				float t = (1.0f - camY1) / (camY2 - camY1);
+				camX1 = camX1 + t * (camX2 - camX1);
+				camY1 = 1.0f;
+			}
+			if (camY2 < 1.0f) {
+				float t = (1.0f - camY2) / (camY1 - camY2);
+				camX2 = camX2 + t * (camX1 - camX2);
+				camY2 = 1.0f;
+			}
+			
+			// Project to screen
+			int sx1 = (int)(camX1 * 200.0f / camY1 + SW / 2);
+			int sy1 = SH / 2; // Wall base at horizon
+			int sx2 = (int)(camX2 * 200.0f / camY2 + SW / 2);
+			int sy2 = SH / 2; // Wall base at horizon
+			
+			// Draw collision zone line (magenta/purple color)
+			// Draw a thicker line to represent PLAYER_RADIUS collision zone
+			int steps = abs(sx2 - sx1) > abs(sy2 - sy1) ? abs(sx2 - sx1) : abs(sy2 - sy1);
+			if (steps == 0) steps = 1;
+			
+			float xInc = (float)(sx2 - sx1) / (float)steps;
+			float yInc = (float)(sy2 - sy1) / (float)steps;
+			float xx = (float)sx1;
+			float yy = (float)sy1;
+			
+			for (int i = 0; i <= steps; i++) {
+				int px = (int)xx;
+				int py = (int)yy;
+				
+				// Draw thicker line (3 pixels high to represent collision zone)
+				if (px >= 0 && px < SW) {
+					for (int dy = -1; dy <= 1; dy++) {
+						int drawY = py + dy;
+						if (drawY >= 0 && drawY < SH) {
+							pixel(px, drawY, 255, 0, 255); // Magenta for wall hitbox
+						}
+					}
+				}
+				
+				xx += xInc;
+				yy += yInc;
+			}
+		}
 	}
 }
 
@@ -838,28 +833,58 @@ void display() {
 	if (T.fr1 - T.fr2 >= 28) { // 35 fps (1000ms/35 = ~28.57ms per frame)
 		clearBackground();
 		movePl();
+		
+		// Update enemy AI
+		updateEnemies(P.x, P.y, P.z);
+		
 		draw3D();
 		
-		// Draw automap on top of 3D view if active
-		drawAutomap();
+		// Update and draw automap (modular)
+		updateAutomap();
+		drawAutomap(pixel, SW, SH, (PlayerState*)&P, (WallData*)W, (SectorData*)S, numSect, (MathTable*)&M);
 		
 		// Update console animation
 		updateConsole();
 		
-		if (T.showFPS) { // Only draw FPS if enabled
-			drawFPS();
+		// Update and draw FPS counter (modular)
+		updateFPSCounter(T.fr1);
+		
+		// Draw debug overlay if enabled (includes FPS, crosshair, coordinates, hitboxes)
+		if (isFPSDisplayEnabled()) {
+			// Draw wall collision zones
+			drawWallDebugOverlay();
+			
+			// Draw player position info and crosshair
+			drawDebugOverlay(pixel, SW, SH, P.x, P.y, P.z, P.a, P.l);
+			
+			// Draw enemy hitboxes and activation radii
+			drawEnemyDebugOverlay(pixel, SW, SH, P.x, P.y, P.z, P.a, M.cos, M.sin);
+			
+			// Draw player hitbox (collision radius as circle in center)
+			// Draw from bottom of screen (player's feet position)
+			int playerScreenRadius = 15; // Visual representation of PLAYER_RADIUS
+			int centerX = SW / 2;
+			int centerY = SH / 2;
+			
+			// Draw player collision circle (cyan color)
+			for (int angle = 0; angle < 360; angle += 8) {
+				int x = centerX + (int)(playerScreenRadius * M.cos[angle]);
+				int y = centerY + (int)(playerScreenRadius * M.sin[angle]);
+				if (x >= 0 && x < SW && y >= 0 && y < SH) {
+					pixel(x, y, 0, 255, 255); // Cyan for player hitbox
+				}
+			}
 		}
+		
+		// Draw FPS text (old function still works for just FPS number)
+		drawFPSCounter(pixel, SH);
 		
 		// Draw console on top of everything
 		drawConsoleText();
 		
-		// Calculate FPS
-		T.frameCount++;
-		if (T.fr1 - T.fpsTimer >= 1000) { // Update FPS every second
-			T.fps = T.frameCount;
-			T.frameCount = 0;
-			T.fpsTimer = T.fr1;
-		}
+		// Update and draw screen melt effect on top of everything (modular)
+		updateScreenMelt();
+		drawScreenMelt(pixel, SW, SH);
 		
 		T.fr2 = T.fr1;
 		glutSwapBuffers();
@@ -878,10 +903,9 @@ void KeysDown(unsigned char key, int x, int y)
 		return;
 	}
 	
-	// Toggle automap with Tab key (ASCII 9)
+	// Toggle automap with Tab key (ASCII 9) - now modular
 	if (key == 9) {
-		K.mapActive = !K.mapActive;
-		K.mapAnimating = 1;
+		toggleAutomap();
 		return;
 	}
 	
@@ -899,7 +923,10 @@ void KeysDown(unsigned char key, int x, int y)
 	if (key == 'm') { K.m = 1; }
 	if (key == '.') { K.sr = 1; }
 	if (key == ',') { K.sl = 1; }
-	if (key == 13) { load(); } //enter key to load level
+	if (key == 13) { 
+		load(); // Reload level
+		startScreenMelt(); // Start melt effect (modular)
+	}
 }
 
 void specialKeys(int key, int x, int y)
@@ -907,7 +934,8 @@ void specialKeys(int key, int x, int y)
 	// Don't process special keys if console is active
 	if (console.active) return;
 	
-	if (key == GLUT_KEY_F1) { T.showFPS = !T.showFPS; } // Toggle FPS display with F1
+	// Toggle FPS display with F1 - now modular
+	if (key == GLUT_KEY_F1) { toggleFPSDisplay(); }
 }
 
 void KeysUp(unsigned char key, int x, int y)
@@ -926,41 +954,36 @@ void KeysUp(unsigned char key, int x, int y)
 	if (key == ',') { K.sl = 0; }
 }
 
-int loadSector[] =
-{//wall start, wall end, z1 height , z2 height 
-	0, 4, 0, 40,2,3, // sector 1
-	4, 8, 0, 40,4,5, //sector 2
-	8, 12, 0, 40,5,3,// sector 3
-	12, 16, 0, 40,0,1 // sector 4
-};
- 
-
 void init() {
 	int x;
 	for (x = 0; x < 360; x++) {
 		M.cos[x] = cos(x * 3.14159 / 180);
 		M.sin[x] = sin(x * 3.14159 / 180);
 	}
-	//init playe
+	
+	// Initialize player
 	P.x = 70; P.y = -110; P.z = 20; P.a = 0; P.l = 0;
 
-	// Initialize FPS counter
-	T.fps = 0;
-	T.frameCount = 0;
-	T.fpsTimer = 0;
+	// Initialize timing
 	T.fr1 = 0;
 	T.fr2 = 0;
-	T.showFPS = 0; // FPS counter starts hidden
-
-	// Initialize keys
-	K.showMap = 0; // Automap starts hidden
-	K.mapActive = 0;
-	K.mapAnimating = 0;
-	K.mapSlidePos = 0.0f;
-
 
 	// Initialize console with screen dimensions
 	initConsole(SW, SH);
+
+	// Initialize FPS counter (modular)
+	initFPSCounter();
+	
+	// Initialize automap (modular)
+	initAutomap();
+	
+	// Initialize enemy system
+	initEnemies();
+	
+	// Add some test enemies in the world
+	addEnemy(200, 200, 20);   // Enemy 1
+	addEnemy(400, 300, 20);   // Enemy 2
+	addEnemy(150, 350, 20);   // Enemy 3
 
 	// Initialize texture 0 (128x128 - raw RGB format)
 	Textures[0].w = T_00_WIDTH;
@@ -1005,6 +1028,10 @@ void init() {
 
 	// Load the map automatically at startup
 	load();
+	
+	// Initialize and start screen melt effect (modular)
+	initScreenMelt();
+	startScreenMelt();
 }
 
 int main(int argc, char* argv[]) {

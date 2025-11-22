@@ -9,6 +9,10 @@ Console console;
 // Global game state variables
 int godMode = 0;
 int noclip = 0;
+
+// Enemy system external reference
+extern int enemiesEnabled;
+
 void initConsole(int screenWidth, int screenHeight) {
     console.active = 0;
     console.slidePos = 0.0f;
@@ -153,10 +157,20 @@ void consoleExecuteCommand() {
             consolePrint("noclip DISABLED");
         }
     }
+    else if (strcmp(command, "noenemies") == 0 || strcmp(command, "nomonsters") == 0) {
+        enemiesEnabled = !enemiesEnabled;
+        if (!enemiesEnabled) {
+            consolePrint("Enemies DISABLED");
+        }   
+        else {
+            consolePrint("Enemies ENABLED");
+        }
+    }
     else if (strcmp(command, "help") == 0) {
         consolePrint("Available commands:");
         consolePrint("  godmode - Toggle god mode");
         consolePrint("  noclip - Walk through walls");
+        consolePrint("  noenemies - Toggle enemies");
         consolePrint("  help - Show this help");
         consolePrint("  clear - Clear console");
         consolePrint("  text_edit - Launch texture editor");
