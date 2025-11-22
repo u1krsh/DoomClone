@@ -104,7 +104,8 @@ void updateEnemies(int playerX, int playerY, int playerZ) {
 void drawEnemyDebugOverlay(void (*pixelFunc)(int, int, int, int, int), 
                            int screenWidth, int screenHeight,
                            int playerX, int playerY, int playerZ, int playerAngle,
-                           float* cosTable, float* sinTable) {
+                           float* cosTable, float* sinTable,
+                           float* depthBuf) {
 	int i;
 	float CS = cosTable[playerAngle];
 	float SN = sinTable[playerAngle];
@@ -126,42 +127,63 @@ void drawEnemyDebugOverlay(void (*pixelFunc)(int, int, int, int, int),
 		int screenX = (int)(camX * 200.0f / camY + screenWidth / 2);
 		int screenY = (int)((enemies[i].z - playerZ) * 200.0f / camY + screenHeight / 2);
 		
-		// Draw collision radius circle (red for active, yellow for idle)
-		int radius = (int)(ENEMY_COLLISION_RADIUS * 200.0f / camY);
-		if (radius > 0 && radius < 100) {
-			// Draw circle outline
-			for (int angle = 0; angle < 360; angle += 10) {
-				int x = screenX + (int)(radius * cosTable[angle]);
-				int y = screenY + (int)(radius * sinTable[angle]);
-				if (x >= 0 && x < screenWidth && y >= 0 && y < screenHeight) {
-					if (enemies[i].state == 1) {
-						pixelFunc(x, y, 255, 0, 0);  // Red when chasing
-					} else {
-						pixelFunc(x, y, 255, 255, 0);  // Yellow when idle
-					}
+		// Calculate radii based on distance
+		int collisionRadius = (int)(ENEMY_COLLISION_RADIUS * 200.0f / camY);
+		int detectionRadius = (int)(ENEMY_DETECTION_RADIUS * 200.0f / camY);
+		
+		// Skip if too small or too large to avoid excessive drawing
+		if (collisionRadius < 2 || collisionRadius > 200) continue;
+		
+		// FIXED: Draw collision radius circle with depth buffer awareness
+		// Only draw circle points that are NOT occluded by walls/enemies
+		if (collisionRadius > 0 && collisionRadius < 100) {
+			for (int angle = 0; angle < 360; angle += 20) {
+				int x = screenX + (int)(collisionRadius * cosTable[angle]);
+				int y = screenY + (int)(collisionRadius * sinTable[angle]);
+				
+				// Bounds check
+				if (x < 0 || x >= screenWidth || y < 0 || y >= screenHeight) continue;
+				
+				// DEPTH TEST: Only draw if this point is in front of walls
+				// Add small offset to prevent z-fighting with enemy sprite
+				float wireframeDepth = camY + 0.5f;
+				
+				// Skip if occluded by geometry
+				if (wireframeDepth > depthBuf[x]) continue;
+				
+				if (enemies[i].state == 1) {
+					pixelFunc(x, y, 255, 0, 0);  // Red when chasing
+				} else {
+					pixelFunc(x, y, 255, 255, 0);  // Yellow when idle
 				}
 			}
 		}
 		
-		// Draw detection radius (green, semi-transparent by drawing fewer points)
-		int detRadius = (int)(ENEMY_DETECTION_RADIUS * 200.0f / camY);
-		if (detRadius > 0 && detRadius < 500) {
-			for (int angle = 0; angle < 360; angle += 15) {
-				int x = screenX + (int)(detRadius * cosTable[angle]);
-				int y = screenY + (int)(detRadius * sinTable[angle]);
-				if (x >= 0 && x < screenWidth && y >= 0 && y < screenHeight) {
-					pixelFunc(x, y, 0, 255, 0);  // Green activation radius
-				}
+		// FIXED: Draw detection radius with depth buffer awareness
+		if (detectionRadius > 0 && detectionRadius < 300) {
+			for (int angle = 0; angle < 360; angle += 30) {
+				int x = screenX + (int)(detectionRadius * cosTable[angle]);
+				int y = screenY + (int)(detectionRadius * sinTable[angle]);
+				
+				// Bounds check
+				if (x < 0 || x >= screenWidth || y < 0 || y >= screenHeight) continue;
+				
+				// DEPTH TEST: Only draw if visible
+				float wireframeDepth = camY + 0.5f;
+				
+				// Skip if occluded
+				if (wireframeDepth > depthBuf[x]) continue;
+				
+				pixelFunc(x, y, 0, 255, 0);  // Green activation radius
 			}
 		}
 		
-		// Draw center marker (white)
+		// Draw center marker (white) - always visible since it's at enemy center
 		if (screenX >= 0 && screenX < screenWidth && screenY >= 0 && screenY < screenHeight) {
-			pixelFunc(screenX, screenY, 255, 255, 255);
-			pixelFunc(screenX - 1, screenY, 255, 255, 255);
-			pixelFunc(screenX + 1, screenY, 255, 255, 255);
-			pixelFunc(screenX, screenY - 1, 255, 255, 255);
-			pixelFunc(screenX, screenY + 1, 255, 255, 255);
+			// Check depth for center marker too
+			if (camY <= depthBuf[screenX] + 1.0f) {
+				pixelFunc(screenX, screenY, 255, 255, 255);
+			}
 		}
 	}
 }

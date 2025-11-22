@@ -58,54 +58,29 @@ int isFPSDisplayEnabled(void) {
 	return fpsCounter.showFPS;
 }
 
-// Draw a line for debug visualization
+// Optimized: Draw a line for debug visualization (bresenham algorithm - faster)
 static void drawDebugLine(void (*pixelFunc)(int, int, int, int, int), 
                           int x1, int y1, int x2, int y2, 
                           int r, int g, int b) {
-	int dx = x2 - x1;
-	int dy = y2 - y1;
-	int steps = (dx > dy ? (dx > -dx ? dx : -dx) : (dy > -dy ? dy : -dy));
-	if (steps == 0) steps = 1;
+	int dx = abs(x2 - x1);
+	int dy = abs(y2 - y1);
+	int sx = x1 < x2 ? 1 : -1;
+	int sy = y1 < y2 ? 1 : -1;
+	int err = dx - dy;
 	
-	float xInc = (float)dx / (float)steps;
-	float yInc = (float)dy / (float)steps;
-	float x = (float)x1;
-	float y = (float)y1;
-	
-	for (int i = 0; i <= steps; i++) {
-		int px = (int)x;
-		int py = (int)y;
-		pixelFunc(px, py, r, g, b);
-		x += xInc;
-		y += yInc;
-	}
-}
-
-// Draw a circle for debug visualization
-static void drawDebugCircle(void (*pixelFunc)(int, int, int, int, int), 
-                            int cx, int cy, int radius, 
-                            int r, int g, int b) {
-	int x = radius;
-	int y = 0;
-	int err = 0;
-	
-	while (x >= y) {
-		pixelFunc(cx + x, cy + y, r, g, b);
-		pixelFunc(cx + y, cy + x, r, g, b);
-		pixelFunc(cx - y, cy + x, r, g, b);
-		pixelFunc(cx - x, cy + y, r, g, b);
-		pixelFunc(cx - x, cy - y, r, g, b);
-		pixelFunc(cx - y, cy - x, r, g, b);
-		pixelFunc(cx + y, cy - x, r, g, b);
-		pixelFunc(cx + x, cy - y, r, g, b);
+	while (1) {
+		pixelFunc(x1, y1, r, g, b);
 		
-		if (err <= 0) {
-			y += 1;
-			err += 2 * y + 1;
+		if (x1 == x2 && y1 == y2) break;
+		
+		int e2 = 2 * err;
+		if (e2 > -dy) {
+			err -= dy;
+			x1 += sx;
 		}
-		if (err > 0) {
-			x -= 1;
-			err -= 2 * x + 1;
+		if (e2 < dx) {
+			err += dx;
+			y1 += sy;
 		}
 	}
 }
@@ -115,24 +90,20 @@ void drawDebugOverlay(void (*pixelFunc)(int, int, int, int, int), int screenWidt
                       int playerX, int playerY, int playerZ, int playerAngle, int playerLook) {
 	if (!fpsCounter.showFPS) return;
 	
-	// Draw center crosshair (XYZ indicator)
+	// Draw center crosshair (XYZ indicator) - simplified for performance
 	int centerX = screenWidth / 2;
 	int centerY = screenHeight / 2;
 	
-	// Horizontal line (red for X axis)
-	drawDebugLine(pixelFunc, centerX - 10, centerY, centerX - 2, centerY, 255, 0, 0);
-	drawDebugLine(pixelFunc, centerX + 2, centerY, centerX + 10, centerY, 255, 0, 0);
+	// Horizontal line (red for X axis) - reduced length
+	drawDebugLine(pixelFunc, centerX - 8, centerY, centerX - 2, centerY, 255, 0, 0);
+	drawDebugLine(pixelFunc, centerX + 2, centerY, centerX + 8, centerY, 255, 0, 0);
 	
-	// Vertical line (green for Y/Z axis)
-	drawDebugLine(pixelFunc, centerX, centerY - 10, centerX, centerY - 2, 0, 255, 0);
-	drawDebugLine(pixelFunc, centerX, centerY + 2, centerX, centerY + 10, 0, 255, 0);
+	// Vertical line (green for Y/Z axis) - reduced length
+	drawDebugLine(pixelFunc, centerX, centerY - 8, centerX, centerY - 2, 0, 255, 0);
+	drawDebugLine(pixelFunc, centerX, centerY + 2, centerX, centerY + 8, 0, 255, 0);
 	
-	// Center dot (white)
+	// Center dot (white) - single pixel only
 	pixelFunc(centerX, centerY, 255, 255, 255);
-	pixelFunc(centerX - 1, centerY, 255, 255, 255);
-	pixelFunc(centerX + 1, centerY, 255, 255, 255);
-	pixelFunc(centerX, centerY - 1, 255, 255, 255);
-	pixelFunc(centerX, centerY + 1, 255, 255, 255);
 	
 	// Draw player coordinates and info
 	char debugText[128];

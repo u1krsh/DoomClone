@@ -542,7 +542,13 @@ void draw3D() {
 		}
 	}
 	
-	// Draw enemies as sprites (after walls, before UI)
+	// FIXED: Draw enemy debug wireframes BEFORE drawing enemy sprites
+	// This way, enemy sprites will occlude the wireframes properly
+	if (isFPSDisplayEnabled()) {
+		drawEnemyDebugOverlay(pixel, SW, SH, P.x, P.y, P.z, P.a, M.cos, M.sin, depthBuffer);
+	}
+	
+	// Draw enemies as sprites (after walls and debug wireframes)
 	drawEnemies();
 }
 
@@ -752,7 +758,7 @@ void drawConsoleText() {
 	}
 }
 
-// Draw wall collision zones for debug visualization
+// Draw wall collision zones for debug visualization (OPTIMIZED)
 void drawWallDebugOverlay() {
 	if (!isFPSDisplayEnabled()) return;
 	
@@ -778,50 +784,94 @@ void drawWallDebugOverlay() {
 			// Skip if both points are behind player
 			if (camY1 < 1.0f && camY2 < 1.0f) continue;
 			
+			// Calculate wall heights in camera space
+			int wz1_bottom = S[s].z1 - P.z + ((P.l * camY1) / 32.0);
+			int wz1_top = S[s].z2 - P.z + ((P.l * camY1) / 32.0);
+			int wz2_bottom = S[s].z1 - P.z + ((P.l * camY2) / 32.0);
+			int wz2_top = S[s].z2 - P.z + ((P.l * camY2) / 32.0);
+			
 			// Clip if needed
 			if (camY1 < 1.0f) {
 				float t = (1.0f - camY1) / (camY2 - camY1);
 				camX1 = camX1 + t * (camX2 - camX1);
 				camY1 = 1.0f;
+				wz1_bottom = wz1_bottom + t * (wz2_bottom - wz1_bottom);
+				wz1_top = wz1_top + t * (wz2_top - wz1_top);
 			}
 			if (camY2 < 1.0f) {
 				float t = (1.0f - camY2) / (camY1 - camY2);
 				camX2 = camX2 + t * (camX1 - camX2);
 				camY2 = 1.0f;
+				wz2_bottom = wz2_bottom + t * (wz1_bottom - wz2_bottom);
+				wz2_top = wz2_top + t * (wz1_top - wz2_top);
 			}
 			
 			// Project to screen
 			int sx1 = (int)(camX1 * 200.0f / camY1 + SW / 2);
-			int sy1 = SH / 2; // Wall base at horizon
-			int sx2 = (int)(camX2 * 200.0f / camY2 + SW / 2);
-			int sy2 = SH / 2; // Wall base at horizon
+			int sy1_bottom = (int)(wz1_bottom * 200.0f / camY1 + SH / 2);
+			int sy1_top = (int)(wz1_top * 200.0f / camY1 + SH / 2);
 			
-			// Draw collision zone line (magenta/purple color)
-			// Draw a thicker line to represent PLAYER_RADIUS collision zone
-			int steps = abs(sx2 - sx1) > abs(sy2 - sy1) ? abs(sx2 - sx1) : abs(sy2 - sy1);
-			if (steps == 0) steps = 1;
+			int sx2 = (int)(camX2 * 200.0f / camY2 + SW / 2);
+			int sy2_bottom = (int)(wz2_bottom * 200.0f / camY2 + SH / 2);
+			int sy2_top = (int)(wz2_top * 200.0f / camY2 + SH / 2);
+			
+			// OPTIMIZED: Draw only edges, skip if off-screen
+			int steps = abs(sx2 - sx1);
+			if (steps < 1) steps = 1;
+			
+			// Skip walls that are completely off-screen
+			if ((sx1 < 0 && sx2 < 0) || (sx1 >= SW && sx2 >= SW)) continue;
 			
 			float xInc = (float)(sx2 - sx1) / (float)steps;
-			float yInc = (float)(sy2 - sy1) / (float)steps;
-			float xx = (float)sx1;
-			float yy = (float)sy1;
+			float yInc_top = (float)(sy2_top - sy1_top) / (float)steps;
+			float yInc_bottom = (float)(sy2_bottom - sy1_bottom) / (float)steps;
 			
-			for (int i = 0; i <= steps; i++) {
+			float xx = (float)sx1;
+			float yy_top = (float)sy1_top;
+			float yy_bottom = (float)sy1_bottom;
+			
+			// OPTIMIZED: Draw wall outline (reduced frequency, every 2 pixels instead of 1)
+			for (int i = 0; i <= steps; i += 2) {
 				int px = (int)xx;
-				int py = (int)yy;
+				int py_top = (int)yy_top;
+				int py_bottom = (int)yy_bottom;
 				
-				// Draw thicker line (3 pixels high to represent collision zone)
-				if (px >= 0 && px < SW) {
-					for (int dy = -1; dy <= 1; dy++) {
-						int drawY = py + dy;
-						if (drawY >= 0 && drawY < SH) {
-							pixel(px, drawY, 255, 0, 255); // Magenta for wall hitbox
-						}
+				// Bounds check
+				if (px < 0 || px >= SW) {
+					xx += xInc * 2;
+					yy_top += yInc_top * 2;
+					yy_bottom += yInc_bottom * 2;
+					continue;
+				}
+				
+				// Draw top edge
+				if (py_top >= 0 && py_top < SH) {
+					pixel(px, py_top, 255, 0, 255); // Magenta for wall hitbox
+				}
+				
+				// Draw bottom edge
+				if (py_bottom >= 0 && py_bottom < SH) {
+					pixel(px, py_bottom, 255, 0, 255); // Magenta for wall hitbox
+				}
+				
+				// OPTIMIZED: Draw vertical line connecting top and bottom (every 8 pixels instead of 4)
+				if (i % 8 == 0) {
+					int y_start = py_bottom < py_top ? py_bottom : py_top;
+					int y_end = py_bottom > py_top ? py_bottom : py_top;
+					
+					// Clamp to screen bounds
+					if (y_start < 0) y_start = 0;
+					if (y_end >= SH) y_end = SH - 1;
+					
+					// Draw vertical line with skipping (every 3 pixels)
+					for (int yy = y_start; yy <= y_end; yy += 3) {
+						pixel(px, yy, 255, 0, 255); // Magenta vertical line
 					}
 				}
 				
-				xx += xInc;
-				yy += yInc;
+				xx += xInc * 2;
+				yy_top += yInc_top * 2;
+				yy_bottom += yInc_bottom * 2;
 			}
 		}
 	}
@@ -857,17 +907,16 @@ void display() {
 			// Draw player position info and crosshair
 			drawDebugOverlay(pixel, SW, SH, P.x, P.y, P.z, P.a, P.l);
 			
-			// Draw enemy hitboxes and activation radii
-			drawEnemyDebugOverlay(pixel, SW, SH, P.x, P.y, P.z, P.a, M.cos, M.sin);
+			// Enemy debug overlay is now drawn inside draw3D() BEFORE sprites
+			// This ensures proper occlusion by enemy sprites
 			
-			// Draw player hitbox (collision radius as circle in center)
-			// Draw from bottom of screen (player's feet position)
+			// OPTIMIZED: Draw player hitbox (fewer points, every 15 degrees instead of 8)
 			int playerScreenRadius = 15; // Visual representation of PLAYER_RADIUS
 			int centerX = SW / 2;
 			int centerY = SH / 2;
 			
-			// Draw player collision circle (cyan color)
-			for (int angle = 0; angle < 360; angle += 8) {
+			// Draw player collision circle (cyan color) - optimized with fewer points
+			for (int angle = 0; angle < 360; angle += 15) {
 				int x = centerX + (int)(playerScreenRadius * M.cos[angle]);
 				int y = centerY + (int)(playerScreenRadius * M.sin[angle]);
 				if (x >= 0 && x < SW && y >= 0 && y < SH) {
@@ -875,7 +924,7 @@ void display() {
 				}
 			}
 		}
-		
+
 		// Draw FPS text (old function still works for just FPS number)
 		drawFPSCounter(pixel, SH);
 		
