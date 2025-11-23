@@ -92,6 +92,9 @@
     <ClInclude Include="enemy.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="textures\main_screen.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="DoomClone.sln" />

@@ -881,59 +881,66 @@ void display() {
 	int x, y;
 
 	if (T.fr1 - T.fr2 >= 28) { // 35 fps (1000ms/35 = ~28.57ms per frame)
-		clearBackground();
-		movePl();
-		
-		// Update enemy AI
-		updateEnemies(P.x, P.y, P.z);
-		
-		draw3D();
-		
-		// Update and draw automap (modular)
-		updateAutomap();
-		drawAutomap(pixel, SW, SH, (PlayerState*)&P, (WallData*)W, (SectorData*)S, numSect, (MathTable*)&M);
-		
-		// Update console animation
-		updateConsole();
-		
-		// Update and draw FPS counter (modular)
-		updateFPSCounter(T.fr1);
-		
-		// Draw debug overlay if enabled (includes FPS, crosshair, coordinates, hitboxes)
-		if (isFPSDisplayEnabled()) {
-			// Draw wall collision zones
-			drawWallDebugOverlay();
+		// If we should show main screen (haven't pressed Enter yet), just draw that
+		if (shouldShowMainScreen()) {
+			drawMainScreen(pixel, SW, SH);
+		}
+		else {
+			// Normal game rendering
+			clearBackground();
+			movePl();
 			
-			// Draw player position info and crosshair
-			drawDebugOverlay(pixel, SW, SH, P.x, P.y, P.z, P.a, P.l);
+			// Update enemy AI
+			updateEnemies(P.x, P.y, P.z);
 			
-			// Enemy debug overlay is now drawn inside draw3D() BEFORE sprites
-			// This ensures proper occlusion by enemy sprites
+			draw3D();
 			
-			// OPTIMIZED: Draw player hitbox (fewer points, every 15 degrees instead of 8)
-			int playerScreenRadius = 15; // Visual representation of PLAYER_RADIUS
-			int centerX = SW / 2;
-			int centerY = SH / 2;
+			// Update and draw automap (modular)
+			updateAutomap();
+			drawAutomap(pixel, SW, SH, (PlayerState*)&P, (WallData*)W, (SectorData*)S, numSect, (MathTable*)&M);
 			
-			// Draw player collision circle (cyan color) - optimized with fewer points
-			for (int angle = 0; angle < 360; angle += 15) {
-				int x = centerX + (int)(playerScreenRadius * M.cos[angle]);
-				int y = centerY + (int)(playerScreenRadius * M.sin[angle]);
-				if (x >= 0 && x < SW && y >= 0 && y < SH) {
-					pixel(x, y, 0, 255, 255); // Cyan for player hitbox
+			// Update console animation
+			updateConsole();
+			
+			// Update and draw FPS counter (modular)
+			updateFPSCounter(T.fr1);
+			
+			// Draw debug overlay if enabled (includes FPS, crosshair, coordinates, hitboxes)
+			if (isFPSDisplayEnabled()) {
+				// Draw wall collision zones
+				drawWallDebugOverlay();
+				
+				// Draw player position info and crosshair
+				drawDebugOverlay(pixel, SW, SH, P.x, P.y, P.z, P.a, P.l);
+				
+				// Enemy debug overlay is now drawn inside draw3D() BEFORE sprites
+				// This ensures proper occlusion by enemy sprites
+				
+				// OPTIMIZED: Draw player hitbox (fewer points, every 15 degrees instead of 8)
+				int playerScreenRadius = 15; // Visual representation of PLAYER_RADIUS
+				int centerX = SW / 2;
+				int centerY = SH / 2;
+				
+				// Draw player collision circle (cyan color) - optimized with fewer points
+				for (int angle = 0; angle < 360; angle += 15) {
+					int x = centerX + (int)(playerScreenRadius * M.cos[angle]);
+					int y = centerY + (int)(playerScreenRadius * M.sin[angle]);
+					if (x >= 0 && x < SW && y >= 0 && y < SH) {
+						pixel(x, y, 0, 255, 255); // Cyan for player hitbox
+					}
 				}
 			}
-		}
 
-		// Draw FPS text (old function still works for just FPS number)
-		drawFPSCounter(pixel, SH);
-		
-		// Draw console on top of everything
-		drawConsoleText();
-		
-		// Update and draw screen melt effect on top of everything (modular)
-		updateScreenMelt();
-		drawScreenMelt(pixel, SW, SH);
+			// Draw FPS text (old function still works for just FPS number)
+			drawFPSCounter(pixel, SH);
+			
+			// Draw console on top of everything
+			drawConsoleText();
+			
+			// Update and draw screen melt effect on top of everything (modular)
+			updateScreenMelt();
+			drawScreenMelt(pixel, SW, SH);
+		}
 		
 		T.fr2 = T.fr1;
 		glutSwapBuffers();
@@ -1078,9 +1085,8 @@ void init() {
 	// Load the map automatically at startup
 	load();
 	
-	// Initialize and start screen melt effect (modular)
+	// Initialize screen melt effect (but don't start it yet - wait for Enter key)
 	initScreenMelt();
-	startScreenMelt();
 }
 
 int main(int argc, char* argv[]) {

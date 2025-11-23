@@ -138,6 +138,7 @@
     <ClInclude Include="screen_melt.h" />
     <ClInclude Include="textures\all_textures.h" />
     <ClInclude Include="textures\BOSSA1.h" />
+    <ClInclude Include="textures\main_screen.h" />
     <ClInclude Include="textures\number.h" />
     <ClInclude Include="textures\oracular_texture.h" />
     <ClInclude Include="textures\TEXTURE_TEMPLATE.h" />
