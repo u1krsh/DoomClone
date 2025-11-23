@@ -86,13 +86,34 @@
     <ClInclude Include="textures\WALL58.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="textures\BOSSA1.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="enemy.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="textures\main_screen.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\BOSSA1_attack.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\BOSSA1_walk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\BOSSA2_attack.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\BOSSA2_walk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\BOSSA3_attack.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\BOSSA3_walk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\FACE_CYCLE1.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\BOSSA1.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

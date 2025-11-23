@@ -7,10 +7,11 @@
 #define SW 320*res //screen width
 #define HSH SH/2 //half screen height
 #define HSW SW/2 //half screen width
-#define pixelScale  3/res //open gl pixel size
+#define pixelScale  4/res //open gl pixel size
 #define GSLW SW*pixelScale //open gl window width
 #define GSLH SH*pixelScale //open gl window height
-
+#define SCRPOS_H GSLH / 8 
+#define SCRPOS_W GSLW / 5
 #define M_PI 3.14159265358979323846  /* pi */
 
 // Consolidated texture includes
@@ -1092,7 +1093,7 @@ void init() {
 int main(int argc, char* argv[]) {
 	glutInit(&argc, argv);
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
-	glutInitWindowPosition(GSLW / 2, GSLH / 2);
+	glutInitWindowPosition(SCRPOS_W, SCRPOS_H);
 	glutInitWindowSize(GSLW, GSLH);
 	glutCreateWindow("");
 	glPointSize(pixelScale); //pixel size

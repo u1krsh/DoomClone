@@ -6,7 +6,7 @@
 #include "oracular_texture.h"
 #include "T_00.h"
 #include "T_01.h"
-#include "T_02.h"
+#include "T_02.h"	
 #include "T_03.h"
 #include "T_04.h"
 #include "T_05.h"
@@ -19,5 +19,6 @@
 // Include animation headers
 #include "WALL57_anim.h"
 #include "WALL58.h"  // WALL58 animation (3 frames)
+#include "BOSSA1_walk.h"
 
 #endif // ALL_TEXTURES_H

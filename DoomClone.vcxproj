@@ -138,6 +138,13 @@
     <ClInclude Include="screen_melt.h" />
     <ClInclude Include="textures\all_textures.h" />
     <ClInclude Include="textures\BOSSA1.h" />
+    <ClInclude Include="textures\BOSSA1_attack.h" />
+    <ClInclude Include="textures\BOSSA1_walk.h" />
+    <ClInclude Include="textures\BOSSA2_attack.h" />
+    <ClInclude Include="textures\BOSSA2_walk.h" />
+    <ClInclude Include="textures\BOSSA3_attack.h" />
+    <ClInclude Include="textures\BOSSA3_walk.h" />
+    <ClInclude Include="textures\FACE_CYCLE1.h" />
     <ClInclude Include="textures\main_screen.h" />
     <ClInclude Include="textures\number.h" />
     <ClInclude Include="textures\oracular_texture.h" />
