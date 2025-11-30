@@ -128,6 +128,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="automap.h" />
+    <ClInclude Include="BOSSA1_walk_template.h" />
     <ClInclude Include="console.h" />
     <ClInclude Include="console_font.h" />
     <ClInclude Include="enemy.h" />

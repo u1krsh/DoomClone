@@ -1,17 +1,16 @@
 #ifndef ENEMY_H
 #define ENEMY_H
 
-#include "textures/BOSSA1.h"
-
-// Define BOSSA1 dimensions from the PNG structure
-#define BOSSA1_WIDTH 41   // From PNG IHDR
-#define BOSSA1_HEIGHT 73  // From PNG IHDR
+#include "textures/BOSSA1_walk.h"
 
 // Enemy constants
 #define MAX_ENEMIES 32
 #define ENEMY_DETECTION_RADIUS 200  // Distance at which enemy starts following player
 #define ENEMY_SPEED 2               // Movement speed of enemies
 #define ENEMY_COLLISION_RADIUS 10   // Collision radius for enemies
+
+// Animation constants
+#define ENEMY_ANIM_SPEED 150        // Milliseconds per frame
 
 // Enemy rendering toggle
 int enemiesEnabled = 1;  // 1 = enemies active, 0 = enemies disabled
@@ -22,17 +21,13 @@ typedef struct {
 	int active;         // Is this enemy alive/active?
 	int state;          // 0 = idle, 1 = chasing
 	float targetAngle;  // Angle to face player
+	int animFrame;      // Current animation frame (0-3)
+	int lastAnimTime;   // Last time animation frame changed
 } Enemy;
 
 // Global enemy array
 Enemy enemies[MAX_ENEMIES];
 int numEnemies = 0;
-
-// Sprite data for BOSSA1 (extracted from PNG)
-// Note: BOSSA1 is a PNG array, we need to extract the raw RGB data
-// For now, we'll use a placeholder - you would need to decode the PNG to get raw RGB
-const unsigned char* BOSSA1_sprite = BOSSA1;  // This is the PNG data
-int BOSSA1_isRawRGB = 0;  // 0 = PNG format, 1 = raw RGB format
 
 // Initialize enemy system
 void initEnemies() {
@@ -40,6 +35,8 @@ void initEnemies() {
 	for (i = 0; i < MAX_ENEMIES; i++) {
 		enemies[i].active = 0;
 		enemies[i].state = 0;
+		enemies[i].animFrame = 0;
+		enemies[i].lastAnimTime = 0;
 	}
 	numEnemies = 0;
 }
@@ -54,6 +51,8 @@ void addEnemy(int x, int y, int z) {
 	enemies[numEnemies].active = 1;
 	enemies[numEnemies].state = 0;
 	enemies[numEnemies].targetAngle = 0.0f;
+	enemies[numEnemies].animFrame = 0;
+	enemies[numEnemies].lastAnimTime = 0;
 	numEnemies++;
 }
 
@@ -65,7 +64,7 @@ int enemyDist(int x1, int y1, int x2, int y2) {
 }
 
 // Update all enemies
-void updateEnemies(int playerX, int playerY, int playerZ) {
+void updateEnemies(int playerX, int playerY, int playerZ, int currentTime) {
 	if (!enemiesEnabled) return;  // Skip if enemies are disabled
 	
 	int i;
@@ -93,9 +92,17 @@ void updateEnemies(int playerX, int playerY, int playerZ) {
 			// Keep enemy at same height as player (same plane)
 			enemies[i].z = playerZ;
 			
+			// Update animation frame when moving (only if we have more than 1 frame)
+			#if BOSSA1_FRAME_COUNT > 1
+			if (currentTime - enemies[i].lastAnimTime >= ENEMY_ANIM_SPEED) {
+				enemies[i].animFrame = (enemies[i].animFrame + 1) % BOSSA1_FRAME_COUNT;
+				enemies[i].lastAnimTime = currentTime;
+			}
+			#endif
 		} else {
-			// Idle state
+			// Idle state - use frame 0
 			enemies[i].state = 0;
+			enemies[i].animFrame = 0;
 		}
 	}
 }

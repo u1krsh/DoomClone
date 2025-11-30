@@ -1,5 +1,5 @@
-#ifndef BOSSA1_H
-#define BOSSA1_H
+#ifndef BOSSA1_walk_H
+#define BOSSA1_walk_H
 
 #define BOSSA1_FRAME_COUNT 4
 #define BOSSA1_FRAME_WIDTH 41
@@ -1133,4 +1133,4 @@ static const unsigned char* BOSSA1_frames[] = {
 
 static const int BOSSA1_frame_durations[] = {100, 100, 100, 100};
 #define BOSSA1_FRAME_MS 100
-#endif // BOSSA1_H
+#endif // BOSSA1_walk_H

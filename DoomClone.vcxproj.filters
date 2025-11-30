@@ -95,9 +95,6 @@
     <ClInclude Include="textures\BOSSA1_attack.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="textures\BOSSA1_walk.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="textures\BOSSA2_attack.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -114,6 +111,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="textures\BOSSA1.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\BOSSA1_walk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="BOSSA1_walk_template.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

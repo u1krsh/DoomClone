@@ -594,9 +594,21 @@ void drawEnemies() {
 		}
 	}
 	
+	// Animation frame lookup table
+	const unsigned char* frameData[4] = {
+		BOSSA1_frame_0,
+		BOSSA1_frame_1,
+		BOSSA1_frame_2,
+		BOSSA1_frame_3
+	};
+	
 	// Draw enemies from furthest to closest
 	for (int enemyIdx = 0; enemyIdx < sortCount; enemyIdx++) {
 		i = sortedEnemies[enemyIdx].index;
+		
+		// Get current animation frame for this enemy
+		int currentFrame = enemies[i].animFrame % 4; // Ensure valid range
+		const unsigned char* spriteData = frameData[currentFrame];
 		
 		// Transform enemy position to camera space (use floats to reduce jitter)
 		float relX = (float)(enemies[i].x - P.x);
@@ -622,8 +634,8 @@ void drawEnemies() {
 		
 		// Calculate sprite size based on distance
 		float scale = 200.0f / camY;
-		int spriteHeight = (int)(BOSSA1_HEIGHT * scale);
-		int spriteWidth = (int)(BOSSA1_WIDTH * scale);
+		int spriteHeight = (int)(BOSSA1_FRAME_HEIGHT * scale);
+		int spriteWidth = (int)(BOSSA1_FRAME_WIDTH * scale);
 		
 		// Ensure minimum size
 		if (spriteWidth < 1) spriteWidth = 1;
@@ -660,32 +672,32 @@ void drawEnemies() {
 				if (v >= 1.0f) v = 0.999f;
 				
 				// Convert UV to texture pixel coordinates
-				int tx = (int)(u * BOSSA1_WIDTH);
-				int ty = (int)(v * BOSSA1_HEIGHT);
+				int tx = (int)(u * BOSSA1_FRAME_WIDTH);
+				int ty = (int)(v * BOSSA1_FRAME_HEIGHT);
 				
 				// Flip vertically (sprite data is stored bottom-to-top like BMP)
-				ty = BOSSA1_HEIGHT - 1 - ty;
+				ty = BOSSA1_FRAME_HEIGHT - 1 - ty;
 				
 				// Clamp texture coordinates (safety)
 				if (tx < 0) tx = 0;
-				if (tx >= BOSSA1_WIDTH) tx = BOSSA1_WIDTH - 1;
+				if (tx >= BOSSA1_FRAME_WIDTH) tx = BOSSA1_FRAME_WIDTH - 1;
 				if (ty < 0) ty = 0;
-				if (ty >= BOSSA1_HEIGHT) ty = BOSSA1_HEIGHT - 1;
+				if (ty >= BOSSA1_FRAME_HEIGHT) ty = BOSSA1_FRAME_HEIGHT - 1;
 				
 				// Get pixel from sprite (RGB format, 3 bytes per pixel)
-				// Row-major order: row 0 is at bottom, each row has BOSSA1_WIDTH pixels
-				int pixelIndex = (ty * BOSSA1_WIDTH + tx) * 3;
+				// Row-major order: row 0 is at bottom, each row has BOSSA1_FRAME_WIDTH pixels
+				int pixelIndex = (ty * BOSSA1_FRAME_WIDTH + tx) * 3;
 				
 				// Bounds check
-				if (pixelIndex < 0 || pixelIndex + 2 >= BOSSA1_WIDTH * BOSSA1_HEIGHT * 3) continue;
+				if (pixelIndex < 0 || pixelIndex + 2 >= BOSSA1_FRAME_WIDTH * BOSSA1_FRAME_HEIGHT * 3) continue;
 				
-				// Read RGB values
-				int r = (unsigned char)BOSSA1[pixelIndex + 0];
-				int g = (unsigned char)BOSSA1[pixelIndex + 1];
-				int b = (unsigned char)BOSSA1[pixelIndex + 2];
+				// Read RGB values from current frame
+				int r = (unsigned char)spriteData[pixelIndex + 0];
+				int g = (unsigned char)spriteData[pixelIndex + 1];
+				int b = (unsigned char)spriteData[pixelIndex + 2];
 				
-				// Skip transparent pixels (pure black in this sprite format)
-				if (r == 0 && g == 0 && b == 0) continue;
+				// Skip transparent pixels (checking for value 1 since that's used as transparent in the data)
+				if (r == 1 && g == 0 && b == 0) continue;
 				
 				// Apply distance-based shading (like walls)
 				float shadeFactor = 1.0f - (camY / 800.0f);
@@ -891,8 +903,8 @@ void display() {
 			clearBackground();
 			movePl();
 			
-			// Update enemy AI
-			updateEnemies(P.x, P.y, P.z);
+			// Update enemy AI with current time for animation
+			updateEnemies(P.x, P.y, P.z, T.fr1);
 			
 			draw3D();
 			
