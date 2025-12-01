@@ -553,9 +553,9 @@ void draw3D() {
 	drawEnemies();
 }
 
-// Draw enemies as billboarded sprites
+// Draw enemies as billboarded sprites (supports multiple enemy types)
 void drawEnemies() {
-	if (!enemiesEnabled) return;  // Skip drawing if enemies are disabled
+	if (!enemiesEnabled) return;
 	
 	int i;
 	float CS = M.cos[P.a];
@@ -594,23 +594,59 @@ void drawEnemies() {
 		}
 	}
 	
-	// Animation frame lookup table
-	const unsigned char* frameData[4] = {
-		BOSSA1_frame_0,
-		BOSSA1_frame_1,
-		BOSSA1_frame_2,
-		BOSSA1_frame_3
-	};
-	
 	// Draw enemies from furthest to closest
 	for (int enemyIdx = 0; enemyIdx < sortCount; enemyIdx++) {
 		i = sortedEnemies[enemyIdx].index;
 		
-		// Get current animation frame for this enemy
-		int currentFrame = enemies[i].animFrame % 4; // Ensure valid range
-		const unsigned char* spriteData = frameData[currentFrame];
+		// Get sprite data based on enemy type
+		const unsigned char* spriteData = NULL;
+		int frameWidth = 0;
+		int frameHeight = 0;
+		int currentFrame = enemies[i].animFrame;
 		
-		// Transform enemy position to camera space (use floats to reduce jitter)
+		// Select sprite based on enemy type
+		switch (enemies[i].enemyType) {
+			case ENEMY_TYPE_BOSSA1:
+				currentFrame = currentFrame % BOSSA1_FRAME_COUNT;
+				frameWidth = BOSSA1_frame_widths[currentFrame];
+				frameHeight = BOSSA1_frame_heights[currentFrame];
+				if (currentFrame == 0) spriteData = BOSSA1_frame_0;
+				else if (currentFrame == 1) spriteData = BOSSA1_frame_1;
+				else if (currentFrame == 2) spriteData = BOSSA1_frame_2;
+				else spriteData = BOSSA1_frame_3;
+				break;
+				
+			case ENEMY_TYPE_BOSSA2:
+				currentFrame = currentFrame % BOSSA2_FRAME_COUNT;
+				frameWidth = BOSSA2_frame_widths[currentFrame];
+				frameHeight = BOSSA2_frame_heights[currentFrame];
+				if (currentFrame == 0) spriteData = BOSSA2_frame_0;
+				else if (currentFrame == 1) spriteData = BOSSA2_frame_1;
+				else spriteData = BOSSA2_frame_2;
+				break;
+				
+			case ENEMY_TYPE_BOSSA3:
+				currentFrame = currentFrame % BOSSA3_FRAME_COUNT;
+				frameWidth = BOSSA3_frame_widths[currentFrame];
+				frameHeight = BOSSA3_frame_heights[currentFrame];
+				if (currentFrame == 0) spriteData = BOSSA3_frame_0;
+				else if (currentFrame == 1) spriteData = BOSSA3_frame_1;
+				else if (currentFrame == 2) spriteData = BOSSA3_frame_2;
+				else spriteData = BOSSA3_frame_3;
+				break;
+				
+			default:
+				// Fallback to BOSSA1
+				currentFrame = 0;
+				frameWidth = BOSSA1_frame_widths[0];
+				frameHeight = BOSSA1_frame_heights[0];
+				spriteData = BOSSA1_frame_0;
+				break;
+		}
+		
+		if (spriteData == NULL) continue;
+		
+		// Transform enemy position to camera space
 		float relX = (float)(enemies[i].x - P.x);
 		float relY = (float)(enemies[i].y - P.y);
 		float relZ = (float)(enemies[i].z - P.z);
@@ -625,7 +661,7 @@ void drawEnemies() {
 		// Apply look up/down adjustment to Z position
 		float adjustedZ = relZ + (P.l * camY) / 32.0f;
 		
-		// Project to screen (use float for stability)
+		// Project to screen
 		float screenXf = camX * 200.0f / camY + HSW;
 		float screenYf = adjustedZ * 200.0f / camY + HSH;
 		
@@ -634,8 +670,8 @@ void drawEnemies() {
 		
 		// Calculate sprite size based on distance
 		float scale = 200.0f / camY;
-		int spriteHeight = (int)(BOSSA1_FRAME_HEIGHT * scale);
-		int spriteWidth = (int)(BOSSA1_FRAME_WIDTH * scale);
+		int spriteHeight = (int)(frameHeight * scale);
+		int spriteWidth = (int)(frameWidth * scale);
 		
 		// Ensure minimum size
 		if (spriteWidth < 1) spriteWidth = 1;
@@ -672,34 +708,33 @@ void drawEnemies() {
 				if (v >= 1.0f) v = 0.999f;
 				
 				// Convert UV to texture pixel coordinates
-				int tx = (int)(u * BOSSA1_FRAME_WIDTH);
-				int ty = (int)(v * BOSSA1_FRAME_HEIGHT);
+				int tx = (int)(u * frameWidth);
+				int ty = (int)(v * frameHeight);
 				
-				// Flip vertically (sprite data is stored bottom-to-top like BMP)
-				ty = BOSSA1_FRAME_HEIGHT - 1 - ty;
+				// Flip vertically
+				ty = frameHeight - 1 - ty;
 				
-				// Clamp texture coordinates (safety)
+				// Clamp texture coordinates
 				if (tx < 0) tx = 0;
-				if (tx >= BOSSA1_FRAME_WIDTH) tx = BOSSA1_FRAME_WIDTH - 1;
+				if (tx >= frameWidth) tx = frameWidth - 1;
 				if (ty < 0) ty = 0;
-				if (ty >= BOSSA1_FRAME_HEIGHT) ty = BOSSA1_FRAME_HEIGHT - 1;
+				if (ty >= frameHeight) ty = frameHeight - 1;
 				
-				// Get pixel from sprite (RGB format, 3 bytes per pixel)
-				// Row-major order: row 0 is at bottom, each row has BOSSA1_FRAME_WIDTH pixels
-				int pixelIndex = (ty * BOSSA1_FRAME_WIDTH + tx) * 3;
+				// Get pixel from sprite
+				int pixelIndex = (ty * frameWidth + tx) * 3;
 				
 				// Bounds check
-				if (pixelIndex < 0 || pixelIndex + 2 >= BOSSA1_FRAME_WIDTH * BOSSA1_FRAME_HEIGHT * 3) continue;
+				if (pixelIndex < 0 || pixelIndex + 2 >= frameWidth * frameHeight * 3) continue;
 				
 				// Read RGB values from current frame
 				int r = (unsigned char)spriteData[pixelIndex + 0];
 				int g = (unsigned char)spriteData[pixelIndex + 1];
 				int b = (unsigned char)spriteData[pixelIndex + 2];
 				
-				// Skip transparent pixels (checking for value 1 since that's used as transparent in the data)
+				// Skip transparent pixels
 				if (r == 1 && g == 0 && b == 0) continue;
 				
-				// Apply distance-based shading (like walls)
+				// Apply distance-based shading
 				float shadeFactor = 1.0f - (camY / 800.0f);
 				if (shadeFactor < 0.3f) shadeFactor = 0.3f;
 				if (shadeFactor > 1.0f) shadeFactor = 1.0f;
@@ -715,7 +750,7 @@ void drawEnemies() {
 				
 				pixel(x, y, r, g, b);
 				
-				// Update depth buffer so enemies occlude each other
+				// Update depth buffer
 				depthBuffer[x] = camY;
 			}
 		}
@@ -1049,10 +1084,12 @@ void init() {
 	// Initialize enemy system
 	initEnemies();
 	
-	// Add some test enemies in the world
-	addEnemy(200, 200, 20);   // Enemy 1
-	addEnemy(400, 300, 20);   // Enemy 2
-	addEnemy(150, 350, 20);   // Enemy 3
+	// Add different enemy types in the world for variety
+	addEnemyType(200, 200, 20, ENEMY_TYPE_BOSSA1);   // BOSSA1 enemy (yellow debug hitbox)
+	addEnemyType(400, 300, 20, ENEMY_TYPE_BOSSA2);   // BOSSA2 enemy (cyan debug hitbox)
+	addEnemyType(150, 350, 20, ENEMY_TYPE_BOSSA3);   // BOSSA3 enemy (magenta debug hitbox)
+	addEnemyType(300, 150, 20, ENEMY_TYPE_BOSSA1);   // Another BOSSA1
+	addEnemyType(250, 400, 20, ENEMY_TYPE_BOSSA2);   // Another BOSSA2
 
 	// Initialize texture 0 (128x128 - raw RGB format)
 	Textures[0].w = T_00_WIDTH;

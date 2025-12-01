@@ -1,12 +1,14 @@
 #ifndef BOSSA3_WALK_H
 #define BOSSA3_WALK_H
 
-#define BOSSA3_WALK_FRAME_COUNT 4
-#define BOSSA3_WALK_FRAME_WIDTH 36
-#define BOSSA3_WALK_FRAME_HEIGHT 55
-#define BOSSA3_WALK_ANIM_AVAILABLE 1
+#define BOSSA3_FRAME_COUNT 3
+#define BOSSA3_ANIM_AVAILABLE 1
 
-static const unsigned char BOSSA3_WALK_frame_0[] = {
+// Per-frame dimensions support for variable-sized animation frames
+static const int BOSSA3_frame_widths[3] = { 36, 35, 32 };
+static const int BOSSA3_frame_heights[3] = { 55, 55, 55 };
+
+static const unsigned char BOSSA3_frame_0[] = {
       1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0, 
     155,  99,  59, 191, 123,  75, 207, 131,  83, 207, 131,  83, 207, 131,  83, 191, 123,  75, 155,  99,  59,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0, 
       1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0, 
@@ -175,7 +177,7 @@ static const unsigned char BOSSA3_WALK_frame_0[] = {
 
 };
 
-static const unsigned char BOSSA3_WALK_frame_1[] = {
+static const unsigned char BOSSA3_frame_1[] = {
       1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0, 
     155,  99,  59, 191, 123,  75, 207, 131,  83, 207, 131,  83, 207, 131,  83, 191, 123,  75, 155,  99,  59,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0, 
       1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0, 
@@ -339,7 +341,7 @@ static const unsigned char BOSSA3_WALK_frame_1[] = {
       1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0
 };
 
-static const unsigned char BOSSA3_WALK_frame_2[] = {
+static const unsigned char BOSSA3_frame_2[] = {
       1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0, 
     155,  99,  59, 191, 123,  75, 207, 131,  83, 207, 131,  83, 207, 131,  83, 191, 123,  75, 155,  99,  59,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0, 
       1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0, 
@@ -489,7 +491,7 @@ static const unsigned char BOSSA3_WALK_frame_2[] = {
       1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0
 };
 
-static const unsigned char BOSSA3_WALK_frame_3[] = {
+static const unsigned char BOSSA3_frame_3[] = {
       1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0, 
       1,   0,   0, 155,  99,  59, 191, 123,  75, 207, 131,  83, 207, 131,  83, 207, 131,  83, 191, 123,  75, 155,  99,  59,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0, 
       1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0, 
@@ -649,12 +651,12 @@ static const unsigned char BOSSA3_WALK_frame_3[] = {
 };
 
 static const unsigned char* BOSSA3_WALK_frames[] = {
-    BOSSA3_WALK_frame_0,
-    BOSSA3_WALK_frame_1,
-    BOSSA3_WALK_frame_2,
-    BOSSA3_WALK_frame_3
+    BOSSA3_frame_0,
+    BOSSA3_frame_1,
+    BOSSA3_frame_2,
+    BOSSA3_frame_3
 };
 
-static const int BOSSA3_WALK_frame_durations[] = {100, 100, 100, 100};
-#define BOSSA3_WALK_FRAME_MS 100
+static const int BOSSA3_WALK_frame_durations[] = {150, 150, 150};
+#define BOSSA3_WALK_FRAME_MS 150
 #endif // BOSSA3_WALK_H

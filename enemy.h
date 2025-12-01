@@ -2,6 +2,8 @@
 #define ENEMY_H
 
 #include "textures/BOSSA1_walk.h"
+#include "textures/BOSSA2_walk.h"
+#include "textures/BOSSA3_walk.h"
 
 // Enemy constants
 #define MAX_ENEMIES 32
@@ -11,6 +13,12 @@
 
 // Animation constants
 #define ENEMY_ANIM_SPEED 150        // Milliseconds per frame
+
+// Enemy types
+#define ENEMY_TYPE_BOSSA1 0
+#define ENEMY_TYPE_BOSSA2 1
+#define ENEMY_TYPE_BOSSA3 2
+#define NUM_ENEMY_TYPES 3
 
 // Enemy rendering toggle
 int enemiesEnabled = 1;  // 1 = enemies active, 0 = enemies disabled
@@ -23,6 +31,7 @@ typedef struct {
 	float targetAngle;  // Angle to face player
 	int animFrame;      // Current animation frame (0-3)
 	int lastAnimTime;   // Last time animation frame changed
+	int enemyType;      // NEW: Type of enemy (0=BOSSA1, 1=BOSSA2, 2=BOSSA3)
 } Enemy;
 
 // Global enemy array
@@ -37,13 +46,15 @@ void initEnemies() {
 		enemies[i].state = 0;
 		enemies[i].animFrame = 0;
 		enemies[i].lastAnimTime = 0;
+		enemies[i].enemyType = ENEMY_TYPE_BOSSA1;
 	}
 	numEnemies = 0;
 }
 
-// Add an enemy at position (x, y, z)
-void addEnemy(int x, int y, int z) {
+// Add an enemy at position (x, y, z) with specified type
+void addEnemyType(int x, int y, int z, int enemyType) {
 	if (numEnemies >= MAX_ENEMIES) return;
+	if (enemyType < 0 || enemyType >= NUM_ENEMY_TYPES) enemyType = ENEMY_TYPE_BOSSA1;
 	
 	enemies[numEnemies].x = x;
 	enemies[numEnemies].y = y;
@@ -53,7 +64,13 @@ void addEnemy(int x, int y, int z) {
 	enemies[numEnemies].targetAngle = 0.0f;
 	enemies[numEnemies].animFrame = 0;
 	enemies[numEnemies].lastAnimTime = 0;
+	enemies[numEnemies].enemyType = enemyType;
 	numEnemies++;
+}
+
+// Add an enemy at position (x, y, z) - defaults to BOSSA1 for backward compatibility
+void addEnemy(int x, int y, int z) {
+	addEnemyType(x, y, z, ENEMY_TYPE_BOSSA1);
 }
 
 // Calculate distance between two points
@@ -63,9 +80,19 @@ int enemyDist(int x1, int y1, int x2, int y2) {
 	return (int)sqrt(dx * dx + dy * dy);
 }
 
+// Get frame count for enemy type
+int getEnemyFrameCount(int enemyType) {
+	switch (enemyType) {
+		case ENEMY_TYPE_BOSSA1: return BOSSA1_FRAME_COUNT;
+		case ENEMY_TYPE_BOSSA2: return BOSSA2_FRAME_COUNT;
+		case ENEMY_TYPE_BOSSA3: return BOSSA3_FRAME_COUNT;
+		default: return BOSSA1_FRAME_COUNT;
+	}
+}
+
 // Update all enemies
 void updateEnemies(int playerX, int playerY, int playerZ, int currentTime) {
-	if (!enemiesEnabled) return;  // Skip if enemies are disabled
+	if (!enemiesEnabled) return;
 	
 	int i;
 	for (i = 0; i < numEnemies; i++) {
@@ -93,12 +120,13 @@ void updateEnemies(int playerX, int playerY, int playerZ, int currentTime) {
 			enemies[i].z = playerZ;
 			
 			// Update animation frame when moving (only if we have more than 1 frame)
-			#if BOSSA1_FRAME_COUNT > 1
-			if (currentTime - enemies[i].lastAnimTime >= ENEMY_ANIM_SPEED) {
-				enemies[i].animFrame = (enemies[i].animFrame + 1) % BOSSA1_FRAME_COUNT;
-				enemies[i].lastAnimTime = currentTime;
+			int frameCount = getEnemyFrameCount(enemies[i].enemyType);
+			if (frameCount > 1) {
+				if (currentTime - enemies[i].lastAnimTime >= ENEMY_ANIM_SPEED) {
+					enemies[i].animFrame = (enemies[i].animFrame + 1) % frameCount;
+					enemies[i].lastAnimTime = currentTime;
+				}
 			}
-			#endif
 		} else {
 			// Idle state - use frame 0
 			enemies[i].state = 0;
@@ -141,8 +169,7 @@ void drawEnemyDebugOverlay(void (*pixelFunc)(int, int, int, int, int),
 		// Skip if too small or too large to avoid excessive drawing
 		if (collisionRadius < 2 || collisionRadius > 200) continue;
 		
-		// FIXED: Draw collision radius circle with depth buffer awareness
-		// Only draw circle points that are NOT occluded by walls/enemies
+		// Draw collision radius circle with depth buffer awareness
 		if (collisionRadius > 0 && collisionRadius < 100) {
 			for (int angle = 0; angle < 360; angle += 20) {
 				int x = screenX + (int)(collisionRadius * cosTable[angle]);
@@ -152,21 +179,27 @@ void drawEnemyDebugOverlay(void (*pixelFunc)(int, int, int, int, int),
 				if (x < 0 || x >= screenWidth || y < 0 || y >= screenHeight) continue;
 				
 				// DEPTH TEST: Only draw if this point is in front of walls
-				// Add small offset to prevent z-fighting with enemy sprite
 				float wireframeDepth = camY + 0.5f;
 				
 				// Skip if occluded by geometry
 				if (wireframeDepth > depthBuf[x]) continue;
 				
+				// Color based on enemy type and state
 				if (enemies[i].state == 1) {
 					pixelFunc(x, y, 255, 0, 0);  // Red when chasing
 				} else {
-					pixelFunc(x, y, 255, 255, 0);  // Yellow when idle
+					// Different colors for different enemy types
+					switch (enemies[i].enemyType) {
+						case ENEMY_TYPE_BOSSA1: pixelFunc(x, y, 255, 255, 0); break;  // Yellow
+						case ENEMY_TYPE_BOSSA2: pixelFunc(x, y, 0, 255, 255); break;  // Cyan
+						case ENEMY_TYPE_BOSSA3: pixelFunc(x, y, 255, 0, 255); break;  // Magenta
+						default: pixelFunc(x, y, 255, 255, 0); break;
+					}
 				}
 			}
 		}
 		
-		// FIXED: Draw detection radius with depth buffer awareness
+		// Draw detection radius with depth buffer awareness
 		if (detectionRadius > 0 && detectionRadius < 300) {
 			for (int angle = 0; angle < 360; angle += 30) {
 				int x = screenX + (int)(detectionRadius * cosTable[angle]);

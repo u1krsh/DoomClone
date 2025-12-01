@@ -116,13 +116,14 @@
     <ClInclude Include="textures\BOSSA1_walk.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="BOSSA1_walk_template.h">
+    <ClInclude Include="textures\BOSSA1_walk_new.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="DoomClone.sln" />
     <None Include="tools\texture_editor_pro.py" />
+    <None Include="BOSSA1_ANIMATION_FIX.md" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="console_font.c">

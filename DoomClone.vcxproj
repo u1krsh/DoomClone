@@ -128,7 +128,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="automap.h" />
-    <ClInclude Include="BOSSA1_walk_template.h" />
     <ClInclude Include="console.h" />
     <ClInclude Include="console_font.h" />
     <ClInclude Include="enemy.h" />
@@ -141,6 +140,7 @@
     <ClInclude Include="textures\BOSSA1.h" />
     <ClInclude Include="textures\BOSSA1_attack.h" />
     <ClInclude Include="textures\BOSSA1_walk.h" />
+    <ClInclude Include="textures\BOSSA1_walk_new.h" />
     <ClInclude Include="textures\BOSSA2_attack.h" />
     <ClInclude Include="textures\BOSSA2_walk.h" />
     <ClInclude Include="textures\BOSSA3_attack.h" />
@@ -165,6 +165,7 @@
     <ClInclude Include="textures\WALL58.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="BOSSA1_ANIMATION_FIX.md" />
     <None Include="DoomClone.sln" />
     <None Include="tools\texture_editor_pro.py" />
   </ItemGroup>

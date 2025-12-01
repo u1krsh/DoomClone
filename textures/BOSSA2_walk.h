@@ -1,12 +1,13 @@
 #ifndef BOSSA2_WALK_H
 #define BOSSA2_WALK_H
 
-#define BOSSA2_WALK_FRAME_COUNT 3
-#define BOSSA2_WALK_FRAME_WIDTH 41
-#define BOSSA2_WALK_FRAME_HEIGHT 55
-#define BOSSA2_WALK_ANIM_AVAILABLE 1
+#define BOSSA2_FRAME_COUNT 3
+#define BOSSA2_ANIM_AVAILABLE 1
+// Per-frame dimensions support for variable-sized animation frames
+static const int BOSSA2_frame_widths[3] = { 41, 37, 38 };
+static const int BOSSA2_frame_heights[3] = { 55, 55, 55 };
 
-static const unsigned char BOSSA2_WALK_frame_0[] = {
+static const unsigned char BOSSA2_frame_0[] = {
       1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,  91,  99,  71, 
     111, 115,  87, 123, 127,  99, 159, 135, 111, 159, 135, 111, 159, 135, 111, 123, 127,  99, 111, 115,  87,  91,  99,  71,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0, 
       1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0, 
@@ -197,7 +198,7 @@ static const unsigned char BOSSA2_WALK_frame_0[] = {
       1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0
 };
 
-static const unsigned char BOSSA2_WALK_frame_1[] = {
+static const unsigned char BOSSA2_frame_1[] = {
       1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,  91,  99,  71, 
     111, 115,  87, 123, 127,  99, 159, 135, 111, 159, 135, 111, 159, 135, 111, 123, 127,  99, 111, 115,  87,  91,  99,  71,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0, 
       1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0, 
@@ -370,7 +371,7 @@ static const unsigned char BOSSA2_WALK_frame_1[] = {
       1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0
 };
 
-static const unsigned char BOSSA2_WALK_frame_2[] = {
+static const unsigned char BOSSA2_frame_2[] = {
       1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,  91,  99,  71, 
     111, 115,  87, 123, 127,  99, 159, 135, 111, 159, 135, 111, 159, 135, 111, 123, 127,  99, 111, 115,  87,  91,  99,  71,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0, 
       1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0, 
@@ -549,11 +550,11 @@ static const unsigned char BOSSA2_WALK_frame_2[] = {
 };
 
 static const unsigned char* BOSSA2_WALK_frames[] = {
-    BOSSA2_WALK_frame_0,
-    BOSSA2_WALK_frame_1,
-    BOSSA2_WALK_frame_2
+    BOSSA2_frame_0,
+    BOSSA2_frame_1,
+    BOSSA2_frame_2
 };
 
-static const int BOSSA2_WALK_frame_durations[] = {100, 100, 100};
-#define BOSSA2_WALK_FRAME_MS 100
+static const int BOSSA2_WALK_frame_durations[] = {150, 150, 150};
+#define BOSSA2_WALK_FRAME_MS 150
 #endif // BOSSA2_WALK_H

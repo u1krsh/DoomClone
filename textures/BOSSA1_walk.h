@@ -2,9 +2,11 @@
 #define BOSSA1_walk_H
 
 #define BOSSA1_FRAME_COUNT 4
-#define BOSSA1_FRAME_WIDTH 41
-#define BOSSA1_FRAME_HEIGHT 73
 #define BOSSA1_ANIM_AVAILABLE 1
+
+// Per-frame dimensions support for variable-sized animation frames
+static const int BOSSA1_frame_widths[4] = { 41, 49, 41, 49 };
+static const int BOSSA1_frame_heights[4] = { 73, 74, 73, 74 };
 
 static const unsigned char BOSSA1_frame_0[] = {
       1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,  59,  59,  59,  59,  59,  59,  59,  59,  59, 
@@ -1131,6 +1133,7 @@ static const unsigned char* BOSSA1_frames[] = {
     BOSSA1_frame_3
 };
 
-static const int BOSSA1_frame_durations[] = {100, 100, 100, 100};
-#define BOSSA1_FRAME_MS 100
+static const int BOSSA1_frame_durations[] = { 150, 150, 150, 150 };
+#define BOSSA1_FRAME_MS 150
+
 #endif // BOSSA1_walk_H

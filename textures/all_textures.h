@@ -20,5 +20,7 @@
 #include "WALL57_anim.h"
 #include "WALL58.h"  // WALL58 animation (3 frames)
 #include "BOSSA1_walk.h"
+#include "BOSSA2_walk.h"
+#include "BOSSA3_walk.h"
 
 #endif // ALL_TEXTURES_H

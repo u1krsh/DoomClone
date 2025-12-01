@@ -596,15 +596,29 @@ class ModernTextureEditor:
             f.write(f"#define {name}_H\n\n")
             
             if len(self.frames) > 1:
-                # Animated
-                img = self.frames[0]['image']
+                # Animated - MODIFIED to support per-frame dimensions
                 f.write(f"#define {name}_FRAME_COUNT {len(self.frames)}\n")
-                f.write(f"#define {name}_FRAME_WIDTH {img.width}\n")
-                f.write(f"#define {name}_FRAME_HEIGHT {img.height}\n")
                 f.write(f"#define {name}_ANIM_AVAILABLE 1\n\n")
                 
+                # Write per-frame width and height arrays
+                f.write(f"static const int {name}_frame_widths[{len(self.frames)}] = {{ ")
+                for i, frame_data in enumerate(self.frames):
+                    f.write(str(frame_data['image'].width))
+                    if i < len(self.frames) - 1:
+                        f.write(", ")
+                f.write(" };\n")
+                
+                f.write(f"static const int {name}_frame_heights[{len(self.frames)}] = {{ ")
+                for i, frame_data in enumerate(self.frames):
+                    f.write(str(frame_data['image'].height))
+                    if i < len(self.frames) - 1:
+                        f.write(", ")
+                f.write(" };\n\n")
+                
+                # Write frame data arrays
                 for i, frame_data in enumerate(self.frames):
                     img = frame_data['image']
+                    f.write(f"// Frame {i}: {img.width}x{img.height}\n")
                     f.write(f"static const unsigned char {name}_frame_{i}[] = {{\n")
                     self.write_image_data(f, img)
                     f.write("};\n\n")
@@ -625,7 +639,7 @@ class ModernTextureEditor:
                 f.write("};\n")
                 f.write(f"#define {name}_FRAME_MS {self.frames[0]['duration']}\n")
             else:
-                # Static
+                # Static - single frame export
                 img = self.frames[0]['image']
                 f.write(f"#define {name}_WIDTH {img.width}\n")
                 f.write(f"#define {name}_HEIGHT {img.height}\n\n")
@@ -914,8 +928,3 @@ class ModernTextureEditor:
             self.current_color = img.getpixel((x, y))
             color_hex = '#%02x%02x%02x' % self.current_color
             self.color_display.config(bg=color_hex)
-
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = ModernTextureEditor(root)
-    root.mainloop()
