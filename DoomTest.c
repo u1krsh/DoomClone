@@ -32,6 +32,9 @@
 // Enemy system
 #include "enemy.h"
 
+// Global pause state
+int gamePaused = 0;
+
 int numText = NUM_TEXTURES - 1;  // Use macro from all_textures.h (max texture index)
 
 int numSect = 0;                          //number of sectors
@@ -102,6 +105,7 @@ float depthBuffer[SW];
 void drawEnemies();
 void drawConsoleText();
 void drawWallDebugOverlay();
+void drawPauseMenu();
 
 void load()
 {
@@ -146,8 +150,8 @@ void pixel(int x, int y, int r, int g, int b) { //draws pixel at x,y with color 
 
 void movePl()
 {
-	// Don't move if console is active
-	if (console.active) return;
+	// Don't move if console is active or game is paused
+	if (console.active || gamePaused) return;
 	
 	//move up, down, left, right
 	if (K.a == 1 && K.m == 0) { P.a -= 4; if (P.a < 0) { P.a += 360; } }
@@ -465,7 +469,7 @@ void draw3D() {
 			if (S[w].d < S[w + 1].d) {
 				sectors st = S[w];
 				S[w] = S[w + 1];
-				S[w + 1] = st;
+			S[w + 1] = st;
 			}
 		}
 	}
@@ -806,6 +810,53 @@ void drawConsoleText() {
 	}
 }
 
+// Draw pause menu overlay
+void drawPauseMenu() {
+	if (!gamePaused) return;
+	
+	int x, y;
+	
+	// Draw semi-transparent overlay
+	for (y = 0; y < SH; y++) {
+		for (x = 0; x < SW; x++) {
+			// Draw every other pixel for transparency effect
+			if ((x + y) % 2 == 0) {
+				pixel(x, y, 0, 0, 0);
+			}
+		}
+	}
+	
+	// Calculate font scale based on screen height
+	int fontScale = 2;
+	if (SH >= 480) fontScale = 3;
+	if (SH >= 720) fontScale = 4;
+	if (SH >= 1080) fontScale = 6;
+	
+	// "GAME PAUSED" text
+	const char* pauseText = "GAME PAUSED";
+	int textLength = strlen(pauseText);
+	
+	// Calculate centered position
+	int charWidth = 8 * fontScale;
+	int textWidth = textLength * charWidth;
+	int textX = (SW - textWidth) / 2;
+	int textY = (SH / 2) - (4 * fontScale);
+	
+	// Draw "GAME PAUSED" in red with console font
+	drawStringScaled(textX, textY, pauseText, 255, 0, 0, fontScale, pixel);
+	
+	// Draw "Press ESC to resume" below in smaller text
+	int helpScale = fontScale / 2;
+	if (helpScale < 1) helpScale = 1;
+	const char* helpText = "Press ESC to resume";
+	int helpLength = strlen(helpText);
+	int helpWidth = helpLength * 8 * helpScale;
+	int helpX = (SW - helpWidth) / 2;
+	int helpY = textY - (15 * fontScale);
+	
+	drawStringScaled(helpX, helpY, helpText, 200, 200, 200, helpScale, pixel);
+}
+
 // Draw wall collision zones for debug visualization (OPTIMIZED)
 void drawWallDebugOverlay() {
 	if (!isFPSDisplayEnabled()) return;
@@ -936,10 +987,13 @@ void display() {
 		else {
 			// Normal game rendering
 			clearBackground();
-			movePl();
 			
-			// Update enemy AI with current time for animation
-			updateEnemies(P.x, P.y, P.z, T.fr1);
+			// Only update player movement and enemies if not paused
+			if (!gamePaused) {
+				movePl();
+				// Update enemy AI with current time for animation
+				updateEnemies(P.x, P.y, P.z, T.fr1);
+			}
 			
 			draw3D();
 			
@@ -982,6 +1036,9 @@ void display() {
 			// Draw FPS text (old function still works for just FPS number)
 			drawFPSCounter(pixel, SH);
 			
+			// Draw pause menu if game is paused
+			drawPauseMenu();
+			
 			// Draw console on top of everything
 			drawConsoleText();
 			
@@ -1001,6 +1058,15 @@ void display() {
 
 void KeysDown(unsigned char key, int x, int y)
 {
+	// Toggle pause with Escape key (ESC = 27)
+	if (key == 27) {
+		// Don't toggle pause if console is active
+		if (!console.active) {
+			gamePaused = !gamePaused;
+		}
+		return;
+	}
+	
 	// Toggle console with backtick/tilde key
 	if (key == '`' || key == '~') {
 		toggleConsole();
@@ -1019,6 +1085,9 @@ void KeysDown(unsigned char key, int x, int y)
 		return;
 	}
 	
+	// Don't process game controls if paused
+	if (gamePaused) return;
+	
 	// Normal game controls
 	if (key == 'w') { K.w = 1; }
 	if (key == 's') { K.s = 1; }
@@ -1035,8 +1104,17 @@ void KeysDown(unsigned char key, int x, int y)
 
 void specialKeys(int key, int x, int y)
 {
-	// Don't process special keys if console is active
-	if (console.active) return;
+	// Toggle pause with Escape key
+	if (key == 27) { // GLUT_KEY_ESC is 27
+		// Don't toggle pause if console is active
+		if (!console.active) {
+			gamePaused = !gamePaused;
+		}
+		return;
+	}
+	
+	// Don't process special keys if console is active or paused
+	if (console.active || gamePaused) return;
 	
 	// Toggle FPS display with F1 - now modular
 	if (key == GLUT_KEY_F1) { toggleFPSDisplay(); }
