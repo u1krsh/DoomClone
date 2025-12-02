@@ -166,7 +166,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="DoomClone.sln" />
-    <None Include="tools\hammer_editor_WORKING.py" />
+    <None Include="tools\hammer_editor.py" />
     <None Include="tools\texture_editor_pro.py" />
   </ItemGroup>
   <ItemGroup>

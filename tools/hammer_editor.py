@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Valve Hammer-Style Editor for DoomClone
+Valve Oracular-Style Editor for 
 Professional 4-way viewport map editor with all features
-Inspired by Valve Hammer Editor
+Inspired by Valve Oracular Editor
 """
 
 import pygame
@@ -10,6 +10,7 @@ import sys
 import math
 import os
 import re  # ADDED: for texture header parsing
+import copy # ADDED: for undo/redo
 from enum import Enum
 from typing import List, Tuple, Optional
 from tkinter import Tk, filedialog
@@ -27,7 +28,7 @@ DEFAULT_LEVEL_PATH = r"D:\PROGRAM\VSPRO\DoomClone\level.h"
 
 TEXTURE_DIR = "textures"  # ADDED: directory containing texture .h files
 
-# Colors (Dark Theme - Hammer Style)
+# Colors (Dark Theme - Oracular Style)
 class Colors:
     BG_DARK = (25, 25, 28)
     BG_MEDIUM = (45, 45, 48)
@@ -54,6 +55,8 @@ class Colors:
     SEPARATOR = (100, 100, 100)
     EDIT_BG = (50, 50, 55)  # ADDED: edit field background
     EDIT_BORDER = (0, 180, 255)  # ADDED: edit field border
+    FLOOR = (50, 50, 50)
+    CEILING = (30, 30, 30)
 
 # Tool types
 class Tool(Enum):
@@ -159,6 +162,34 @@ class HammerEditor:
         self.font_large = pygame.font.SysFont('Segoe UI', 16, bold=True)
         self.font_title = pygame.font.SysFont('Segoe UI', 20, bold=True)
         
+        # UI Layout Constants
+        self.TOOLBAR_WIDTH = 60
+        self.STATUS_BAR_HEIGHT = 25
+        
+        # Load Tool Icons
+        self.tool_icons = {}
+        icon_dir = os.path.join("tools", "icons")
+        for tool, filename in [
+            (Tool.SELECT, "select.png"),
+            (Tool.CREATE_SECTOR, "sector.png"),
+            (Tool.VERTEX_EDIT, "vertex.png"),
+            (Tool.ENTITY, "entity.png")
+        ]:
+            try:
+                path = os.path.join(icon_dir, filename)
+                if os.path.exists(path):
+                    icon = pygame.image.load(path).convert_alpha()
+                    self.tool_icons[tool] = pygame.transform.smoothscale(icon, (32, 32))
+            except Exception as e:
+                print(f"Failed to load icon {filename}: {e}")
+                
+        # Status Bar State
+        self.status_message = ""
+        self.status_timer = 0
+        
+        # 3D View State
+        self.textured_view = False
+
         self.current_level_path = DEFAULT_LEVEL_PATH
         
         self.current_tool = Tool.SELECT
@@ -175,7 +206,7 @@ class HammerEditor:
         self.active_menu = None
         self.menu_items = {
             "File": ["New (Ctrl+N)", "Open (Ctrl+O)", "Save (Ctrl+S)", "---", "Exit"],
-            "Edit": ["Delete (Del)", "---", "Select All"],
+            "Edit": ["Undo (Ctrl+Z)", "Redo (Ctrl+Y)", "---", "Delete (Del)", "---", "Select All"],
             "View": ["Toggle Grid (G)", "Toggle Snap (Shift+S)"],
             "Tools": ["Select (1)", "Create Sector (2)", "Vertex Edit (3)", "Entity (4)"],
             "Help": ["About"]
@@ -211,8 +242,19 @@ class HammerEditor:
         self.edit_field = None  # currently editing item dict
         self.edit_buffer = ""
         
+        # ADDED: Undo/Redo stacks
+        self.undo_stack = []
+        self.redo_stack = []
+        
+        # ADDED: Box Selection state
+        self.selecting_box = False
+        self.box_start = (0, 0)
+        self.box_end = (0, 0)
+        
         # ADDED: buttons for texture navigation
         self.texture_nav_buttons = []  # list of (rect, delta)
+        
+
 
     # ADDED: texture loader
     def parse_texture_file(self, filename, var_names=None):
@@ -349,10 +391,10 @@ class HammerEditor:
     def setup_viewports(self):
         """Setup 4-way viewport layout"""
         # Calculate viewport sizes
-        toolbar_width = 60
+        toolbar_width = self.TOOLBAR_WIDTH
         properties_width = 280
         menu_height = 30
-        status_height = 25
+        status_height = self.STATUS_BAR_HEIGHT
         separator = 2
         
         available_width = WINDOW_WIDTH - toolbar_width - properties_width - 3 * separator
@@ -508,6 +550,71 @@ class HammerEditor:
             elif event.type == pygame.MOUSEWHEEL:
                 self.handle_mouse_wheel(event)
     
+    # ADDED: Undo/Redo methods
+    def save_undo_snapshot(self):
+        """Save current state to undo stack"""
+        state = {
+            'sectors': copy.deepcopy(self.sectors),
+            'walls': copy.deepcopy(self.walls),
+            'player': copy.deepcopy(self.player)
+        }
+        self.undo_stack.append(state)
+        self.redo_stack.clear()
+        # Limit stack size
+        if len(self.undo_stack) > 50:
+            self.undo_stack.pop(0)
+
+    def undo(self):
+        """Undo last action"""
+        if not self.undo_stack:
+            print("Nothing to undo")
+            return
+            
+        # Save current state to redo stack
+        current_state = {
+            'sectors': copy.deepcopy(self.sectors),
+            'walls': copy.deepcopy(self.walls),
+            'player': copy.deepcopy(self.player)
+        }
+        self.redo_stack.append(current_state)
+        
+        # Restore state
+        state = self.undo_stack.pop()
+        self.sectors = state['sectors']
+        self.walls = state['walls']
+        self.player = state['player']
+        
+        # Reset selection if invalid
+        if self.selected_sector is not None and self.selected_sector >= len(self.sectors):
+            self.selected_sector = None
+        if self.selected_wall is not None and self.selected_wall >= len(self.walls):
+            self.selected_wall = None
+        self.selected_vertices = [] # Clear vertex selection to be safe
+        
+        print("Undo performed")
+
+    def redo(self):
+        """Redo last undone action"""
+        if not self.redo_stack:
+            print("Nothing to redo")
+            return
+            
+        # Save current state to undo stack
+        current_state = {
+            'sectors': copy.deepcopy(self.sectors),
+            'walls': copy.deepcopy(self.walls),
+            'player': copy.deepcopy(self.player)
+        }
+        self.undo_stack.append(current_state)
+        
+        # Restore state
+        state = self.redo_stack.pop()
+        self.sectors = state['sectors']
+        self.walls = state['walls']
+        self.player = state['player']
+        
+        print("Redo performed")
+
     # ADDED: commit property edit
     def commit_property_edit(self):
         if not self.edit_field:
@@ -518,7 +625,11 @@ class HammerEditor:
             val = None
         target = self.edit_field.get('target')
         attr = self.edit_field.get('attr')
-        if val is not None and target and attr:
+        
+        # Check if value actually changed
+        current_val = getattr(target, attr) if target and attr else None
+        if val is not None and target and attr and val != current_val:
+            self.save_undo_snapshot() # Save before changing
             setattr(target, attr, val)
             # Keep props in sync
             if isinstance(target, Sector):
@@ -534,6 +645,14 @@ class HammerEditor:
         self.edit_buffer = ""
 
     def handle_keypress(self, event):
+        # Undo/Redo shortcuts
+        if event.key == pygame.K_z and pygame.key.get_mods() & pygame.KMOD_CTRL:
+            self.undo()
+            return
+        if event.key == pygame.K_y and pygame.key.get_mods() & pygame.KMOD_CTRL:
+            self.redo()
+            return
+
         # If editing a field, capture numeric input
         if self.edit_field:
             if event.key == pygame.K_RETURN:
@@ -541,15 +660,21 @@ class HammerEditor:
             elif event.key == pygame.K_ESCAPE:
                 self.edit_field = None; self.edit_buffer = ""; return
             elif event.key == pygame.K_BACKSPACE:
-                self.edit_buffer = self.edit_buffer[:-1]; return
+                self.edit_buffer = self.edit_buffer[:-1]
+                # self.commit_property_edit() # REMOVED: Don't commit on every keystroke for text entry
+                return
             else:
-                if event.unicode.isdigit():
+                if event.unicode.isdigit() or (event.unicode == '-' and not self.edit_buffer):
                     self.edit_buffer += event.unicode
+                    # self.commit_property_edit() # REMOVED: Don't commit on every keystroke for text entry
                 return
         if event.key == pygame.K_1:
             self.current_tool = Tool.SELECT
         elif event.key == pygame.K_2:
             self.current_tool = Tool.CREATE_SECTOR
+            self.selected_sector = None
+            self.selected_wall = None
+            self.selected_vertices = []
         elif event.key == pygame.K_3:
             self.current_tool = Tool.VERTEX_EDIT
         elif event.key == pygame.K_4:
@@ -565,10 +690,15 @@ class HammerEditor:
         elif event.key == pygame.K_n and pygame.key.get_mods() & pygame.KMOD_CTRL:
             self.new_level()
         elif event.key == pygame.K_DELETE:
+            self.save_undo_snapshot() # Save before delete
             self.delete_selected()
         elif event.key == pygame.K_ESCAPE:
             if self.creating_sector:
                 self.cancel_sector_creation()
+        elif event.key == pygame.K_TAB:
+            self.textured_view = not self.textured_view
+            self.status_message = f"3D View: {'Textured' if self.textured_view else 'Wireframe'}"
+            self.status_timer = 120
 
     def handle_mouse_down(self, event):
         if event.button == 1:
@@ -577,21 +707,96 @@ class HammerEditor:
             # Property panel click first (to avoid viewport selection overriding edits)
             if self.handle_property_click(event.pos):
                 return
+            
+            # Toolbar click
+            if self.handle_toolbar_click(event.pos):
+                return
+                
             for vp in self.viewports:
                 if vp.rect.collidepoint(event.pos):
                     self.active_viewport = vp
                     vp.is_active = True
                     if self.current_tool == Tool.SELECT:
-                        self.handle_select_click(vp, event.pos)
+                        if not self.handle_select_click(vp, event.pos):
+                            # Nothing clicked, start box selection
+                            if vp.view_type == ViewType.TOP:
+                                self.selecting_box = True
+                                self.box_start = event.pos
+                                self.box_end = event.pos
+                        else:
+                            # Start dragging if we selected something
+                            if self.selected_sector is not None or self.selected_wall is not None:
+                                self.save_undo_snapshot() # Save before drag starts
+                                self.dragging_geometry = True
                     elif self.current_tool == Tool.CREATE_SECTOR:
                         self.handle_create_sector_click(vp, event.pos)
                     elif self.current_tool == Tool.VERTEX_EDIT:
                         self.handle_vertex_edit_click(vp, event.pos)
+                        # Start dragging if we have vertices selected
+                        if self.selected_vertices:
+                            self.save_undo_snapshot() # Save before drag starts
+                            self.dragging_geometry = True
                 else:
                     vp.is_active = False
             self.check_ui_click(event.pos)
         elif event.button == 3:
             self.last_mouse_pos = event.pos
+
+    # ADDED: Geometry dragging methods
+    def drag_sector(self, pos):
+        vp = self.active_viewport
+        if not vp or vp.view_type != ViewType.TOP:
+            return
+            
+        wx, wy = vp.screen_to_world(pos[0], pos[1])
+        prev_wx, prev_wy = vp.screen_to_world(self.last_mouse_pos[0], self.last_mouse_pos[1])
+        
+        dx = wx - prev_wx
+        dy = wy - prev_wy
+        
+        # ... (rest of drag logic same as before) ...
+        
+        sector = self.sectors[self.selected_sector]
+        for i in range(sector.ws, sector.we):
+            if i < len(self.walls):
+                wall = self.walls[i]
+                wall.x1 += dx
+                wall.y1 += dy
+                wall.x2 += dx
+                wall.y2 += dy
+                
+                if self.snap_to_grid:
+                    wall.x1 = round(wall.x1 / vp.grid_size) * vp.grid_size
+                    wall.y1 = round(wall.y1 / vp.grid_size) * vp.grid_size
+                    wall.x2 = round(wall.x2 / vp.grid_size) * vp.grid_size
+                    wall.y2 = round(wall.y2 / vp.grid_size) * vp.grid_size
+
+    def drag_vertices(self, pos):
+        vp = self.active_viewport
+        if not vp or vp.view_type != ViewType.TOP:
+            return
+            
+        wx, wy = vp.screen_to_world(pos[0], pos[1])
+        prev_wx, prev_wy = vp.screen_to_world(self.last_mouse_pos[0], self.last_mouse_pos[1])
+        
+        dx = wx - prev_wx
+        dy = wy - prev_wy
+        
+        for wall_idx, vert_idx in self.selected_vertices:
+            if wall_idx < len(self.walls):
+                wall = self.walls[wall_idx]
+                if vert_idx == 0:
+                    wall.x1 += dx
+                    wall.y1 += dy
+                    if self.snap_to_grid:
+                        wall.x1 = round(wall.x1 / vp.grid_size) * vp.grid_size
+                        wall.y1 = round(wall.y1 / vp.grid_size) * vp.grid_size
+                else:
+                    wall.x2 += dx
+                    wall.y2 += dy
+                    if self.snap_to_grid:
+                        wall.x2 = round(wall.x2 / vp.grid_size) * vp.grid_size
+                        wall.y2 = round(wall.y2 / vp.grid_size) * vp.grid_size
 
     # ADDED: property click handler
     def handle_property_click(self, pos):
@@ -602,26 +807,94 @@ class HammerEditor:
         if not panel_rect.collidepoint(pos):
             return False
         # Texture nav buttons
+        # Texture nav buttons
         for rect, delta in self.texture_nav_buttons:
-            if rect.collidepoint(pos) and self.selected_wall is not None:
-                wall = self.walls[self.selected_wall]
-                wall.wt = (wall.wt + delta) % max(1, len(self.textures))
-                self.prop_wall_texture = wall.wt
-                return True
+            if rect.collidepoint(pos):
+                if self.selected_wall is not None:
+                    self.save_undo_snapshot() # Save before texture change
+                    wall = self.walls[self.selected_wall]
+                    wall.wt = (wall.wt + delta) % max(1, len(self.textures))
+                    self.prop_wall_texture = wall.wt
+                    return True
+                elif self.current_tool == Tool.CREATE_SECTOR:
+                    self.prop_wall_texture = (self.prop_wall_texture + delta) % max(1, len(self.textures))
+                    return True
         # Property items
         for item in self.property_items:
             if item['rect'].collidepoint(pos):
                 self.edit_field = item
                 current_val = getattr(item['target'], item['attr'])
                 self.edit_buffer = str(current_val)
+                # REMOVED: Dragging logic
                 return True
         return True  # Click inside panel but not on item still consumes
 
     def handle_mouse_up(self, event):
         if event.button == 1:
             self.mouse_down = False
+            self.dragging_geometry = False # Stop geometry dragging
+            
+            if self.selecting_box:
+                self.selecting_box = False
+                # Perform box selection
+                vp = self.active_viewport
+                if vp and vp.view_type == ViewType.TOP:
+                    # Calculate box in world coords
+                    start_x, start_y = vp.screen_to_world(self.box_start[0], self.box_start[1])
+                    end_x, end_y = vp.screen_to_world(self.box_end[0], self.box_end[1])
+                    
+                    min_x = min(start_x, end_x)
+                    max_x = max(start_x, end_x)
+                    min_y = min(start_y, end_y)
+                    max_y = max(start_y, end_y)
+                    
+                    # Find sectors inside box
+                    # A sector is selected if ANY of its walls are inside (or maybe center?)
+                    # Let's say if at least one wall point is inside
+                    
+                    found_sector = False
+                    found_sector = False
+                    for i, sector in enumerate(self.sectors):
+                        is_inside = False
+                        found_wall_idx = None
+                        for w_idx in range(sector.ws, sector.we):
+                            if w_idx < len(self.walls):
+                                w = self.walls[w_idx]
+                                # Check if either endpoint is in box
+                                if (min_x <= w.x1 <= max_x and min_y <= w.y1 <= max_y) or \
+                                   (min_x <= w.x2 <= max_x and min_y <= w.y2 <= max_y):
+                                    is_inside = True
+                                    found_wall_idx = w_idx
+                                    break
+                        if is_inside:
+                            self.selected_sector = i
+                            # Select the specific wall found
+                            if found_wall_idx is not None:
+                                self.selected_wall = found_wall_idx
+                            elif sector.ws < sector.we:
+                                self.selected_wall = sector.ws
+                            found_sector = True
+                            break # Just select one for now, or last one found
+                    
+                    if not found_sector:
+                        self.selected_sector = None
+                        self.selected_wall = None
 
     def handle_mouse_motion(self, event):
+        # Handle box selection
+        if self.selecting_box:
+            self.box_end = event.pos
+            return
+
+        # Handle geometry dragging
+        if self.mouse_down and getattr(self, 'dragging_geometry', False) and self.active_viewport:
+             if self.current_tool == Tool.SELECT and self.selected_sector is not None:
+                 self.drag_sector(event.pos)
+             elif self.current_tool == Tool.VERTEX_EDIT and self.selected_vertices:
+                 self.drag_vertices(event.pos)
+             self.last_mouse_pos = event.pos
+             return
+
         if event.buttons[1] or (event.buttons[2] and self.current_tool == Tool.SELECT):
             if self.active_viewport:
                 dx = event.pos[0] - self.last_mouse_pos[0]
@@ -654,6 +927,8 @@ class HammerEditor:
         if not selected_something:
             self.selected_wall = None
             self.selected_sector = None
+            return False
+        return True
 
     def handle_create_sector_click(self, vp, pos):
         if vp.view_type != ViewType.TOP:
@@ -708,6 +983,9 @@ class HammerEditor:
             self.creating_sector = False
             self.sector_vertices = []
             return
+            
+        self.save_undo_snapshot() # Save before creating sector
+        
         wall_start = len(self.walls)
         for i in range(len(self.sector_vertices)):
             x1, y1 = self.sector_vertices[i]
@@ -839,7 +1117,12 @@ class HammerEditor:
             elif "Exit" in item:
                 self.running = False
         elif menu == "Edit":
-            if "Delete" in item:
+            if "Undo" in item:
+                self.undo()
+            elif "Redo" in item:
+                self.redo()
+            elif "Delete" in item:
+                self.save_undo_snapshot() # Save before delete
                 self.delete_selected()
             elif "Select All" in item:
                 self.selected_vertices = []
@@ -856,6 +1139,9 @@ class HammerEditor:
                 self.current_tool = Tool.SELECT
             elif "Create Sector" in item:
                 self.current_tool = Tool.CREATE_SECTOR
+                self.selected_sector = None
+                self.selected_wall = None
+                self.selected_vertices = []
             elif "Vertex Edit" in item:
                 self.current_tool = Tool.VERTEX_EDIT
             elif "Entity" in item:
@@ -1114,39 +1400,120 @@ class HammerEditor:
     
     def draw_toolbar(self):
         """Draw left toolbar"""
-        toolbar_width = 60
-        toolbar_height = WINDOW_HEIGHT - 30 - 25
+        toolbar_width = self.TOOLBAR_WIDTH
+        toolbar_height = WINDOW_HEIGHT - 30 - self.STATUS_BAR_HEIGHT
         toolbar_rect = pygame.Rect(0, 30, toolbar_width, toolbar_height)
         
         pygame.draw.rect(self.screen, Colors.PANEL_BG, toolbar_rect)
         pygame.draw.line(self.screen, Colors.SEPARATOR, (toolbar_width, 30),
-                        (toolbar_width, WINDOW_HEIGHT - 25), 1)
+                        (toolbar_width, WINDOW_HEIGHT - self.STATUS_BAR_HEIGHT), 1)
         
         # Tool buttons
-        tool_icons = ["Sel", "Sec", "Vtx", "Ent"]
+        tools = [Tool.SELECT, Tool.CREATE_SECTOR, Tool.VERTEX_EDIT, Tool.ENTITY]
         button_y = 40
-        button_height = 50
-        button_width = 50
+        button_size = 48
+        button_margin = (toolbar_width - button_size) // 2
         
-        for i, (tool, icon_text) in enumerate(zip(Tool, tool_icons)):
-            button_rect = pygame.Rect(5, button_y, button_width, button_height)
+        mouse_pos = pygame.mouse.get_pos()
+        
+        for tool in tools:
+            rect = pygame.Rect(button_margin, button_y, button_size, button_size)
             
-            # Button color based on state
-            if self.current_tool == tool:
-                color = Colors.BUTTON_ACTIVE
-            elif button_rect.collidepoint(pygame.mouse.get_pos()):
-                color = Colors.BUTTON_HOVER
+            # Highlight active or hovered
+            is_active = self.current_tool == tool
+            is_hovered = rect.collidepoint(mouse_pos)
+            
+            if is_active:
+                pygame.draw.rect(self.screen, Colors.BUTTON_ACTIVE, rect, border_radius=4)
+            elif is_hovered:
+                pygame.draw.rect(self.screen, Colors.BUTTON_HOVER, rect, border_radius=4)
+            
+            # Draw icon
+            if tool in self.tool_icons:
+                icon = self.tool_icons[tool]
+                icon_rect = icon.get_rect(center=rect.center)
+                self.screen.blit(icon, icon_rect)
             else:
-                color = Colors.BUTTON
+                # Fallback text
+                text = self.font_small.render(tool.name[:3], True, Colors.TEXT)
+                text_rect = text.get_rect(center=rect.center)
+                self.screen.blit(text, text_rect)
+                
+            # Draw active border LAST to ensure visibility
+            if is_active:
+                pygame.draw.rect(self.screen, Colors.ACCENT, rect, 2, border_radius=4)
             
-            pygame.draw.rect(self.screen, color, button_rect, border_radius=4)
+            button_y += button_size + 10
+
+    def handle_toolbar_click(self, pos):
+        """Handle clicks on the toolbar"""
+        toolbar_width = self.TOOLBAR_WIDTH
+        if pos[0] > toolbar_width or pos[1] < 30 or pos[1] > WINDOW_HEIGHT - self.STATUS_BAR_HEIGHT:
+            return False
             
-            # Icon text
-            text = self.font_small.render(icon_text, True, Colors.TEXT)
-            text_rect = text.get_rect(center=button_rect.center)
-            self.screen.blit(text, text_rect)
+        tools = [Tool.SELECT, Tool.CREATE_SECTOR, Tool.VERTEX_EDIT, Tool.ENTITY]
+        button_y = 40
+        button_size = 48
+        button_margin = (toolbar_width - button_size) // 2
+        
+        for tool in tools:
+            rect = pygame.Rect(button_margin, button_y, button_size, button_size)
+            if rect.collidepoint(pos):
+                self.current_tool = tool
+                # Reset selection if switching to Create Sector (consistent with keypress)
+                if tool == Tool.CREATE_SECTOR:
+                    self.selected_sector = None
+                    self.selected_wall = None
+                    self.selected_vertices = []
+                return True
+            button_y += button_size + 10
             
-            button_y += button_height + 5
+        return True # Clicked toolbar but missed buttons, still consume event
+
+    def draw_status_bar(self):
+        """Draw bottom status bar"""
+        bar_height = self.STATUS_BAR_HEIGHT
+        y = WINDOW_HEIGHT - bar_height
+        
+        # Background
+        pygame.draw.rect(self.screen, Colors.PANEL_BG, (0, y, WINDOW_WIDTH, bar_height))
+        pygame.draw.line(self.screen, Colors.SEPARATOR, (0, y), (WINDOW_WIDTH, y), 1)
+        
+        # Status items
+        x = 10
+        
+        # Current Tool
+        tool_text = f"Tool: {self.current_tool.name}"
+        t_surf = self.font_small.render(tool_text, True, Colors.TEXT)
+        self.screen.blit(t_surf, (x, y + 5))
+        x += 150
+        
+        # Grid / Snap
+        grid_text = f"Grid: {'ON' if self.show_grid else 'OFF'} | Snap: {'ON' if self.snap_to_grid else 'OFF'}"
+        g_surf = self.font_small.render(grid_text, True, Colors.TEXT)
+        self.screen.blit(g_surf, (x, y + 5))
+        x += 200
+        
+        # Zoom (Active Viewport)
+        if self.active_viewport:
+            zoom_text = f"Zoom: {self.active_viewport.zoom:.1f}x"
+            z_surf = self.font_small.render(zoom_text, True, Colors.TEXT)
+            self.screen.blit(z_surf, (x, y + 5))
+        x += 100
+        
+        # Mouse Pos (World)
+        if self.active_viewport:
+            mx, my = pygame.mouse.get_pos()
+            if self.active_viewport.rect.collidepoint((mx, my)):
+                wx, wy = self.active_viewport.screen_to_world(mx, my)
+                pos_text = f"Pos: {int(wx)}, {int(wy)}"
+                p_surf = self.font_small.render(pos_text, True, Colors.TEXT)
+                self.screen.blit(p_surf, (x, y + 5))
+        
+        # Message (Right aligned)
+        if self.status_message:
+            m_surf = self.font_small.render(self.status_message, True, Colors.ACCENT)
+            self.screen.blit(m_surf, (WINDOW_WIDTH - m_surf.get_width() - 10, y + 5))
     
     def draw_viewport(self, vp):
         """Draw a viewport"""
@@ -1184,7 +1551,12 @@ class HammerEditor:
         if vp.view_type == ViewType.TOP:
             # Top view: Draw walls as lines
             for i, wall in enumerate(self.walls):
-                self.draw_wall_2d(vp, wall, i == self.selected_wall, i == self.hover_wall)
+                is_sector_selected = False
+                if self.selected_sector is not None:
+                    sec = self.sectors[self.selected_sector]
+                    if sec.ws <= i < sec.we:
+                        is_sector_selected = True
+                self.draw_wall_2d(vp, wall, i == self.selected_wall, i == self.hover_wall, is_sector_selected)
             
             # Draw vertices
             for i, wall in enumerate(self.walls):
@@ -1236,6 +1608,19 @@ class HammerEditor:
         
         # Reset clip
         self.screen.set_clip(None)
+
+        # Draw selection box
+        if self.selecting_box and vp.view_type == ViewType.TOP and vp.is_active:
+             # Draw semi-transparent rect
+             x = min(self.box_start[0], self.box_end[0])
+             y = min(self.box_start[1], self.box_end[1])
+             w = abs(self.box_end[0] - self.box_start[0])
+             h = abs(self.box_end[1] - self.box_start[1])
+             
+             s = pygame.Surface((w, h), pygame.SRCALPHA)
+             s.fill((128, 0, 128, 50)) # Purple transparent
+             self.screen.blit(s, (x, y))
+             pygame.draw.rect(self.screen, (128, 0, 128), (x, y, w, h), 1)
     
     def draw_grid(self, vp):
         """Draw grid in viewport"""
@@ -1275,7 +1660,7 @@ class HammerEditor:
             pygame.draw.line(self.screen, color, (sx1, sy1), (sx2, sy2), 1)
             y += grid_size
     
-    def draw_wall_2d(self, vp, wall, is_selected, is_hovered):
+    def draw_wall_2d(self, vp, wall, is_selected, is_hovered, is_sector_selected=False):
         """Draw a wall in 2D view"""
         # Draw in all 2D views
         if vp.view_type == ViewType.TOP:
@@ -1295,6 +1680,9 @@ class HammerEditor:
         # Wall color based on state
         if is_selected:
             color = Colors.WALL_SELECTED
+            width = 3
+        elif is_sector_selected:
+            color = Colors.WALL_SELECTED
             width = 2
         elif is_hovered:
             color = Colors.SELECT_HOVER
@@ -1302,8 +1690,21 @@ class HammerEditor:
         else:
             color = Colors.WALL
             width = 1
-        
+            
         pygame.draw.line(self.screen, color, (x1, y1), (x2, y2), width)
+        
+        # Draw direction indicator (small tick)
+        if is_selected or is_sector_selected or is_hovered:
+            mid_x = (x1 + x2) / 2
+            mid_y = (y1 + y2) / 2
+            dx = x2 - x1
+            dy = y2 - y1
+            length = math.sqrt(dx*dx + dy*dy)
+            if length > 0:
+                # Normal vector
+                nx = -dy / length * 5
+                ny = dx / length * 5
+                pygame.draw.line(self.screen, color, (mid_x, mid_y), (mid_x + nx, mid_y + ny), 1)
     
     def draw_vertex_2d(self, vp, vx, vy, is_selected, is_hovered):
         """Draw a vertex in 2D view"""
@@ -1439,7 +1840,9 @@ class HammerEditor:
         cos_a = math.cos(cam_angle)
         sin_a = math.sin(cam_angle)
         
-        # Project and draw each wall
+        # Collect all walls with their distance
+        walls_to_draw = []
+        
         for sector in self.sectors:
             for wall_idx in range(sector.ws, sector.we):
                 if wall_idx >= len(self.walls):
@@ -1447,39 +1850,54 @@ class HammerEditor:
                 
                 wall = self.walls[wall_idx]
                 
-                # Transform to camera space
-                rel_x1 = wall.x1 - cam_x
-                rel_y1 = wall.y1 - cam_y
-                rel_x2 = wall.x2 - cam_x
-                rel_y2 = wall.y2 - cam_y
+                # Calculate distance to wall midpoint
+                mid_x = (wall.x1 + wall.x2) / 2
+                mid_y = (wall.y1 + wall.y2) / 2
+                dist_sq = (mid_x - cam_x)**2 + (mid_y - cam_y)**2
                 
-                # Rotate to camera space
-                wx1 = rel_x1 * cos_a - rel_y1 * sin_a
-                wy1 = rel_x1 * sin_a + rel_y1 * cos_a
-                wx2 = rel_x2 * cos_a - rel_y2 * sin_a
-                wy2 = rel_x2 * sin_a + rel_y2 * cos_a
-                
-                # Skip if behind camera
-                if wy1 < 1 and wy2 < 1:
-                    continue
-                
-                # Clip behind camera
-                if wy1 < 1:
-                    wx1, wy1, _ = self.clip_behind_camera(wx1, wy1, sector.z1 - cam_z, wx2, wy2, sector.z1 - cam_z)
-                if wy2 < 1:
-                    wx2, wy2, _ = self.clip_behind_camera(wx2, wy2, sector.z2 - cam_z, wx1, wy1, sector.z2 - cam_z)
-                
-                # Project to screen
-                scale = 200
-                sx1 = int(vp.rect.x + vp.rect.width // 2 + wx1 * scale / wy1)
-                sy1_bottom = int(vp.rect.y + vp.rect.height // 2 - (sector.z1 - cam_z) * scale / wy1)
-                sy1_top = int(vp.rect.y + vp.rect.height // 2 - (sector.z2 - cam_z) * scale / wy1)
-                
-                sx2 = int(vp.rect.x + vp.rect.width // 2 + wx2 * scale / wy2)
-                sy2_bottom = int(vp.rect.y + vp.rect.height // 2 - (sector.z1 - cam_z) * scale / wy2)
-                sy2_top = int(vp.rect.y + vp.rect.height // 2 - (sector.z2 - cam_z) * scale / wy2)
-                
-                # Draw wall
+                walls_to_draw.append((dist_sq, sector, wall, wall_idx))
+        
+        # Sort by distance (furthest first) - Painter's Algorithm
+        walls_to_draw.sort(key=lambda x: x[0], reverse=True)
+        
+        # Draw sorted walls
+        for _, sector, wall, wall_idx in walls_to_draw:
+            # Transform to camera space
+            rel_x1 = wall.x1 - cam_x
+            rel_y1 = wall.y1 - cam_y
+            rel_x2 = wall.x2 - cam_x
+            rel_y2 = wall.y2 - cam_y
+            
+            # Rotate to camera space
+            wx1 = rel_x1 * cos_a - rel_y1 * sin_a
+            wy1 = rel_x1 * sin_a + rel_y1 * cos_a
+            wx2 = rel_x2 * cos_a - rel_y2 * sin_a
+            wy2 = rel_x2 * sin_a + rel_y2 * cos_a
+            
+            # Skip if behind camera
+            if wy1 < 1 and wy2 < 1:
+                continue
+            
+            # Clip behind camera
+            if wy1 < 1:
+                wx1, wy1, _ = self.clip_behind_camera(wx1, wy1, sector.z1 - cam_z, wx2, wy2, sector.z1 - cam_z)
+            if wy2 < 1:
+                wx2, wy2, _ = self.clip_behind_camera(wx2, wy2, sector.z2 - cam_z, wx1, wy1, sector.z2 - cam_z)
+            
+            # Project to screen
+            scale = 200
+            sx1 = int(vp.rect.x + vp.rect.width // 2 + wx1 * scale / wy1)
+            sy1_bottom = int(vp.rect.y + vp.rect.height // 2 - (sector.z1 - cam_z) * scale / wy1)
+            sy1_top = int(vp.rect.y + vp.rect.height // 2 - (sector.z2 - cam_z) * scale / wy1)
+            
+            sx2 = int(vp.rect.x + vp.rect.width // 2 + wx2 * scale / wy2)
+            sy2_bottom = int(vp.rect.y + vp.rect.height // 2 - (sector.z1 - cam_z) * scale / wy2)
+            sy2_top = int(vp.rect.y + vp.rect.height // 2 - (sector.z2 - cam_z) * scale / wy2)
+            
+            # Draw wall
+            if self.textured_view and wall.wt < len(self.textures):
+                self.draw_textured_wall(vp, wall, sx1, sx2, sy1_top, sy1_bottom, sy2_top, sy2_bottom, wx1, wy1, wx2, wy2)
+            else:
                 color = Colors.WALL_SELECTED if wall_idx == self.selected_wall else Colors.WALL
                 
                 # Draw vertical edges
@@ -1489,6 +1907,101 @@ class HammerEditor:
                 # Draw horizontal edges
                 pygame.draw.line(self.screen, color, (sx1, sy1_bottom), (sx2, sy2_bottom), 1)
                 pygame.draw.line(self.screen, color, (sx1, sy1_top), (sx2, sy2_top), 1)
+    
+    def draw_textured_wall(self, vp, wall, sx1, sx2, sy1_top, sy1_bottom, sy2_top, sy2_bottom, wx1, wy1, wx2, wy2):
+        """Draw a textured wall using vertical strips"""
+        texture = self.textures[wall.wt].frames[0]
+        tex_w, tex_h = texture.get_size()
+        
+        # Ensure sx1 < sx2
+        if sx1 > sx2:
+            sx1, sx2 = sx2, sx1
+            sy1_top, sy2_top = sy2_top, sy1_top
+            sy1_bottom, sy2_bottom = sy2_bottom, sy1_bottom
+            wx1, wx2 = wx2, wx1
+            wy1, wy2 = wy2, wy1
+            
+        # Clip to viewport
+        start_x = max(sx1, vp.rect.x)
+        end_x = min(sx2, vp.rect.x + vp.rect.width)
+        
+        if start_x >= end_x:
+            return
+            
+        # Perspective correct interpolation setup
+        z1 = wy1
+        z2 = wy2
+        
+        # Avoid division by zero
+        if z1 < 0.1: z1 = 0.1
+        if z2 < 0.1: z2 = 0.1
+        
+        inv_z1 = 1.0 / z1
+        inv_z2 = 1.0 / z2
+        
+        # Texture coordinates (u)
+        # Assuming texture repeats every 64 units or based on wall length
+        # Calculate wall length for u mapping
+        wall_len = math.sqrt((wall.x2 - wall.x1)**2 + (wall.y2 - wall.y1)**2)
+        u1 = 0
+        u2 = wall_len * wall.u # Scale u by wall length and texture scale
+        
+        u_over_z1 = u1 * inv_z1
+        u_over_z2 = u2 * inv_z2
+        
+        # Draw strips
+        step = 2 # Pixel width of each strip (increase for speed, decrease for quality)
+        
+        for x in range(start_x, end_x, step):
+            # Calculate t (0.0 to 1.0) based on screen x relative to full wall width
+            if sx2 == sx1: break
+            t = (x - sx1) / (sx2 - sx1)
+            
+            # Interpolate 1/z
+            inv_z = inv_z1 + t * (inv_z2 - inv_z1)
+            if inv_z == 0: continue
+            z = 1.0 / inv_z
+            
+            # Interpolate u/z and recover u
+            u_over_z = u_over_z1 + t * (u_over_z2 - u_over_z1)
+            u = u_over_z * z
+            
+            # Wrap u
+            u = int(u) % tex_w
+            
+            # Interpolate y (screen space linear interpolation is "okay" for vertical walls)
+            # For perfect perspective, we should project z, but linear screen Y is usually fine for Doom walls
+            y_top = int(sy1_top + t * (sy2_top - sy1_top))
+            y_bottom = int(sy1_bottom + t * (sy2_bottom - sy1_bottom))
+            
+            h = y_bottom - y_top
+            if h <= 0: continue
+            
+            # Get texture column
+            # Optimization: Pre-scale texture or use fast scaling
+            # For now, just slice and scale
+            col = texture.subsurface((u, 0, 1, tex_h))
+            scaled_col = pygame.transform.scale(col, (step, h))
+            
+            # Blit
+            # Clip y
+            draw_y = y_top
+            
+            # Simple clipping
+            if draw_y < vp.rect.y:
+                # Skip top part
+                offset = vp.rect.y - draw_y
+                if offset >= h: continue
+                area = pygame.Rect(0, offset, step, h - offset)
+                self.screen.blit(scaled_col, (x, vp.rect.y), area)
+            elif draw_y + h > vp.rect.y + vp.rect.height:
+                # Skip bottom part
+                h_clip = (draw_y + h) - (vp.rect.y + vp.rect.height)
+                if h_clip >= h: continue
+                area = pygame.Rect(0, 0, step, h - h_clip)
+                self.screen.blit(scaled_col, (x, draw_y), area)
+            else:
+                self.screen.blit(scaled_col, (x, draw_y))
     
     def clip_behind_camera(self, x1, y1, z1, x2, y2, z2):
         """Clip line segment behind camera"""
@@ -1527,17 +2040,31 @@ class HammerEditor:
         self.texture_nav_buttons = []
         
         def add_editable(label_text, target, attr, value, x, y):
-            label_surface = self.font_small.render(f"{label_text}: {value}", True, Colors.TEXT_DIM)
-            rect = pygame.Rect(x, y, panel_width - 20, 20)
+            # Draw label
+            label_surface = self.font_small.render(f"{label_text}:", True, Colors.TEXT_DIM)
+            self.screen.blit(label_surface, (x + 5, y + 2))
+            
+            # Draw value box
+            label_width = label_surface.get_width()
+            box_x = x + 10 + label_width
+            box_width = panel_width - 20 - (10 + label_width)
+            rect = pygame.Rect(box_x, y, box_width, 20)
+            
             # Highlight if editing
             if self.edit_field and self.edit_field.get('attr') == attr and self.edit_field.get('target') is target:
-                pygame.draw.rect(self.screen, Colors.EDIT_BG, rect)
-                pygame.draw.rect(self.screen, Colors.EDIT_BORDER, rect, 1)
-                edit_text = self.font_small.render(f"{label_text}: {self.edit_buffer}", True, Colors.ACCENT_BRIGHT)
-                self.screen.blit(edit_text, (x + 5, y + 2))
+                pygame.draw.rect(self.screen, (255, 255, 255), rect) # White bg when editing
+                pygame.draw.rect(self.screen, Colors.ACCENT, rect, 2) # Accent border
+                edit_text = self.font_small.render(self.edit_buffer, True, (0, 0, 0)) # Black text
+                self.screen.blit(edit_text, (box_x + 5, y + 2))
             else:
-                self.screen.blit(label_surface, (x + 5, y + 2))
-            self.property_items.append({'rect': rect, 'target': target, 'attr': attr})
+                pygame.draw.rect(self.screen, (40, 40, 40), rect) # Dark grey bg when idle
+                pygame.draw.rect(self.screen, (60, 60, 60), rect, 1) # Subtle border
+                val_text = self.font_small.render(str(value), True, Colors.TEXT)
+                self.screen.blit(val_text, (box_x + 5, y + 2))
+                
+            # Store rect for click detection (full row or just box? Let's do full row for easier clicking, but visual is just box)
+            full_rect = pygame.Rect(x, y, panel_width - 20, 20)
+            self.property_items.append({'rect': full_rect, 'target': target, 'attr': attr})
         
         if self.selected_sector is not None:
             sector = self.sectors[self.selected_sector]
@@ -1585,6 +2112,45 @@ class HammerEditor:
                         self.screen.blit(t_surf, t_rect)
                         self.texture_nav_buttons.append((rect, delta))
                     y += btn_h + 10
+        elif self.current_tool == Tool.CREATE_SECTOR:
+            self.draw_property_label("New Sector Defaults", panel_x + 10, y); y += 25
+            self.draw_property_label("Heights", panel_x + 10, y); y += 25
+            add_editable("Floor (z1)", self, 'prop_sector_z1', self.prop_sector_z1, panel_x + 10, y); y += 22
+            add_editable("Ceiling (z2)", self, 'prop_sector_z2', self.prop_sector_z2, panel_x + 10, y); y += 22
+            self.draw_property_label("Sector Textures", panel_x + 10, y); y += 25
+            add_editable("Surface Tex (st)", self, 'prop_sector_texture', self.prop_sector_texture, panel_x + 10, y); y += 22
+            add_editable("Surface Scale (ss)", self, 'prop_sector_scale', self.prop_sector_scale, panel_x + 10, y); y += 30
+            self.draw_property_label("Wall Defaults", panel_x + 10, y); y += 25
+            add_editable("Texture (wt)", self, 'prop_wall_texture', self.prop_wall_texture, panel_x + 10, y); y += 22
+            add_editable("U (u)", self, 'prop_wall_u', self.prop_wall_u, panel_x + 10, y); y += 22
+            add_editable("V (v)", self, 'prop_wall_v', self.prop_wall_v, panel_x + 10, y); y += 22
+            
+            # Texture preview for defaults
+            if self.textures:
+                tex_index = self.prop_wall_texture % len(self.textures)
+                tex = self.textures[tex_index]
+                preview_size = 128
+                preview_rect = pygame.Rect(panel_x + (panel_width - preview_size)//2, y, preview_size, preview_size)
+                pygame.draw.rect(self.screen, Colors.BG_LIGHT, preview_rect)
+                # Scale texture surface
+                current_frame = tex.get_current_frame()
+                scaled = pygame.transform.smoothscale(current_frame, (preview_size-4, preview_size-4))
+                self.screen.blit(scaled, (preview_rect.x + 2, preview_rect.y + 2))
+                name_text = self.font_small.render(tex.name, True, Colors.TEXT_DIM)
+                self.screen.blit(name_text, (preview_rect.x + 4, preview_rect.y + 4))
+                y += preview_size + 8
+                # Prev / Next buttons
+                btn_w = 60; btn_h = 24
+                prev_rect = pygame.Rect(panel_x + 30, y, btn_w, btn_h)
+                next_rect = pygame.Rect(panel_x + panel_width - 30 - btn_w, y, btn_w, btn_h)
+                for rect, label, delta in [(prev_rect, "Prev", -1), (next_rect, "Next", 1)]:
+                    color = Colors.BUTTON_ACTIVE if rect.collidepoint(pygame.mouse.get_pos()) else Colors.BUTTON
+                    pygame.draw.rect(self.screen, color, rect, border_radius=4)
+                    t_surf = self.font_small.render(label, True, Colors.TEXT)
+                    t_rect = t_surf.get_rect(center=rect.center)
+                    self.screen.blit(t_surf, t_rect)
+                    self.texture_nav_buttons.append((rect, delta))
+                y += btn_h + 10
         else:
             self.draw_property_label("Current Settings", panel_x + 10, y); y += 25
             self.draw_property_value(f"Tool: {self.current_tool.name}", panel_x + 10, y); y += 20
