@@ -123,7 +123,7 @@
   <ItemGroup>
     <None Include="DoomClone.sln" />
     <None Include="tools\texture_editor_pro.py" />
-    <None Include="BOSSA1_ANIMATION_FIX.md" />
+    <None Include="tools\hammer_editor_WORKING.py" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="console_font.c">

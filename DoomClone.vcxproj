@@ -165,8 +165,8 @@
     <ClInclude Include="textures\WALL58.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="BOSSA1_ANIMATION_FIX.md" />
     <None Include="DoomClone.sln" />
+    <None Include="tools\hammer_editor_WORKING.py" />
     <None Include="tools\texture_editor_pro.py" />
   </ItemGroup>
   <ItemGroup>
