@@ -152,12 +152,12 @@ class Viewport:
                 round(wy / self.grid_size) * self.grid_size)
 
 # === MAIN EDITOR CLASS ===
-class HammerEditor:
+class OracularEditor:
     def __init__(self):
         self.width = WINDOW_WIDTH
         self.height = WINDOW_HEIGHT
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-        pygame.display.set_caption("DoomClone Hammer Editor")
+        pygame.display.set_caption("Oracular Editor")
         self.clock = pygame.time.Clock()
         self.running = True
         
@@ -197,6 +197,25 @@ class HammerEditor:
         self.status_message = ""
         self.status_timer = 0
         
+        # Load Logo
+        self.logo_img = None
+        self.logo_text_img = None
+        try:
+            logo_path = os.path.join(os.path.dirname(__file__), "oracular_logo.png")
+            if os.path.exists(logo_path):
+                self.logo_img = pygame.image.load(logo_path).convert_alpha()
+                # Auto-remove background (assume top-left pixel is bg)
+                bg_color = self.logo_img.get_at((0, 0))
+                self.logo_img.set_colorkey(bg_color)
+            
+            text_path = os.path.join(os.path.dirname(__file__), "oracular_text.png")
+            if os.path.exists(text_path):
+                self.logo_text_img = pygame.image.load(text_path).convert_alpha()
+                # Auto-remove background for text too
+                bg_color_text = self.logo_text_img.get_at((0, 0))
+                self.logo_text_img.set_colorkey(bg_color_text)
+        except Exception as e:
+            print(f"Warning: Could not load logo: {e}")
         # 3D View State
         self.textured_view = False
 
@@ -320,13 +339,14 @@ class HammerEditor:
                 # 1b. Look for #define NAME_FRAME_WIDTH (common for animated textures)
                 if not w_match:
                     # Try stripping _frame_X suffix
-                    base_name = re.sub(r'_frame_\\d+$', '', name)
+                    base_name = re.sub(r'_frame_\d+$', '', name)
+                    print(f"DEBUG: name={name}, base_name={base_name}")
                     w_match = re.search(f'#define\\s+{base_name}_FRAME_WIDTH\\s+(\\d+)', data)
                     if not w_match:
                         w_match = re.search(f'#define\\s+{base_name}_WIDTH\\s+(\\d+)', data)
                 
                 if not h_match:
-                    base_name = re.sub(r'_frame_\\d+$', '', name)
+                    base_name = re.sub(r'_frame_\d+$', '', name)
                     h_match = re.search(f'#define\\s+{base_name}_FRAME_HEIGHT\\s+(\\d+)', data)
                     if not h_match:
                         h_match = re.search(f'#define\\s+{base_name}_HEIGHT\\s+(\\d+)', data)
@@ -553,6 +573,60 @@ class HammerEditor:
             for vp in self.viewports[:3]:
                 vp.zoom = zoom
         
+    def show_about_dialog(self):
+        """Show the About dialog with logo"""
+        dialog_width = 500
+        dialog_height = 400
+        x = (WINDOW_WIDTH - dialog_width) // 2
+        y = (WINDOW_HEIGHT - dialog_height) // 2
+        
+        # Create a surface for the dialog to allow for a modal loop or just overlay
+        # For simplicity, we'll run a mini-loop here to block interaction
+        running = True
+        while running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE or event.key == pygame.K_RETURN:
+                        running = False
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    mx, my = pygame.mouse.get_pos()
+                    # Close if clicked outside or on a close button (not implemented)
+                    # For now, just click anywhere to close
+                    running = False
+            
+            # Draw overlay
+            overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT))
+            overlay.fill((0, 0, 0))
+            overlay.set_alpha(150)
+            self.screen.blit(overlay, (0, 0))
+            
+            # Draw Dialog
+            rect = pygame.Rect(x, y, dialog_width, dialog_height)
+            pygame.draw.rect(self.screen, Colors.PANEL_BG, rect)
+            pygame.draw.rect(self.screen, Colors.ACCENT, rect, 2)
+            
+            # Draw Logo
+            current_y = y + 20
+            if self.logo_img:
+                logo_x = x + (dialog_width - self.logo_img.get_width()) // 2
+                self.screen.blit(self.logo_img, (logo_x, current_y))
+                current_y += self.logo_img.get_height() + 20
+            else:
+                current_y += 50
+            
+            # Draw Text
+            title = self.font_title.render("Oracular Editor", True, Colors.ACCENT_BRIGHT)
+            subtitle = self.font_medium.render("Open Source Doom-Style Level Editor", True, Colors.TEXT)
+            
+            self.screen.blit(title, (x + (dialog_width - title.get_width()) // 2, current_y))
+            current_y += 30
+            self.screen.blit(subtitle, (x + (dialog_width - subtitle.get_width()) // 2, current_y))
+            
+            pygame.display.flip()
+            self.clock.tick(60)
+
     def run(self):
         """Main editor loop"""
         while self.running:
@@ -1247,20 +1321,163 @@ class HammerEditor:
                 return True
         return False
 
-    def check_menu_click(self, pos):
-        # 1. Check Dropdown Items FIRST
-        if self.active_menu:
-            dropdown_rect, selected_item = self.get_dropdown_rect_and_item(pos)
-            if selected_item:
-                self.execute_menu_action(self.active_menu, selected_item)
-                self.active_menu = None
-                return True
-            # If clicked inside dropdown rect but not on item (e.g. separator), consume click
-            if dropdown_rect and dropdown_rect.collidepoint(pos):
-                return True
+    def show_about_dialog(self):
+        """Show a modal About dialog"""
+        dialog_width = 360
+        dialog_height = 340
+        dialog_x = (self.width - dialog_width) // 2
+        dialog_y = (self.height - dialog_height) // 2
+        
+        # Create a transparent overlay
+        overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180)) # Dark semi-transparent background
+        
+        # Prepare logo for this dialog size
+        dialog_logo = self.logo_img
+        if dialog_logo and dialog_logo.get_width() > dialog_width - 60:
+            scale = (dialog_width - 60) / dialog_logo.get_width()
+            new_h = int(dialog_logo.get_height() * scale)
+            dialog_logo = pygame.transform.smoothscale(dialog_logo, (dialog_width - 60, new_h))
 
-        # 2. Check Menu Bar
+        running_dialog = True
+        while running_dialog:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running_dialog = False
+                    self.running = False
+                elif event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
+                    running_dialog = False
+            
+            self.screen.blit(overlay, (0, 0))
+            
+            # Draw Dialog Box
+            dialog_rect = pygame.Rect(dialog_x, dialog_y, dialog_width, dialog_height)
+            
+            # Shadow
+            shadow_rect = dialog_rect.copy()
+            shadow_rect.move_ip(4, 4)
+            pygame.draw.rect(self.screen, (0, 0, 0), shadow_rect, border_radius=12)
+            
+            # Background
+            pygame.draw.rect(self.screen, Colors.BG_DARK, dialog_rect, border_radius=12)
+            pygame.draw.rect(self.screen, Colors.ACCENT, dialog_rect, 2, border_radius=12)
+            
+            # Content
+            content_y = dialog_y + 40
+            
+            # Logo & Text Layout
+            # We want [Logo] [Text] side by side
+            # Logo should be small, e.g., 64px height
+            
+            target_h = 64
+            
+            # Prepare scaled surfaces
+            surf_logo = None
+            if self.logo_img:
+                scale = target_h / self.logo_img.get_height()
+                new_w = int(self.logo_img.get_width() * scale)
+                surf_logo = pygame.transform.smoothscale(self.logo_img, (new_w, target_h))
+            
+            surf_text = None
+            if self.logo_text_img:
+                # Scale text to be smaller than logo, e.g. 40px height
+                text_target_h = 40
+                scale = text_target_h / self.logo_text_img.get_height()
+                new_w = int(self.logo_text_img.get_width() * scale)
+                
+                # Check if it fits in remaining width (dialog width - logo width - padding)
+                max_w = dialog_width - (new_w if surf_logo is None else surf_logo.get_width()) - 60
+                if new_w > max_w:
+                    scale = max_w / self.logo_text_img.get_width()
+                    new_w = max_w
+                    text_target_h = int(self.logo_text_img.get_height() * scale)
+                
+                surf_text = pygame.transform.smoothscale(self.logo_text_img, (new_w, text_target_h))
+            
+            # Calculate total width to center them
+            total_w = 0
+            gap = 15
+            if surf_logo: total_w += surf_logo.get_width()
+            if surf_text: total_w += surf_text.get_width()
+            if surf_logo and surf_text: total_w += gap
+            
+            start_x = dialog_x + (dialog_width - total_w) // 2
+            
+            # Draw them
+            curr_x = start_x
+            if surf_logo:
+                self.screen.blit(surf_logo, (curr_x, content_y))
+                curr_x += surf_logo.get_width() + gap
+            
+            if surf_text:
+                self.screen.blit(surf_text, (curr_x, content_y))
+            elif not surf_text:
+                # Fallback if text image missing
+                title_surf = self.font_title.render("Oracular Editor", True, Colors.TEXT)
+                self.screen.blit(title_surf, (curr_x, content_y + (target_h - title_surf.get_height())//2))
+
+            content_y += target_h + 30
+            
+            # Version
+            ver_surf = self.font_small.render("v1.0.0", True, Colors.ACCENT_BRIGHT)
+            ver_rect = ver_surf.get_rect(center=(dialog_x + dialog_width // 2, content_y))
+            self.screen.blit(ver_surf, ver_rect)
+            content_y += 30
+            
+            # Description (Concise)
+            desc_surf = self.font_medium.render("Oracular Editor", True, Colors.TEXT_DIM)
+            desc_rect = desc_surf.get_rect(center=(dialog_x + dialog_width // 2, content_y))
+            self.screen.blit(desc_surf, desc_rect)
+            content_y += 35
+            
+            # Credits
+            cred_surf = self.font_small.render("By Uttkarsh", True, Colors.TEXT)
+            cred_rect = cred_surf.get_rect(center=(dialog_x + dialog_width // 2, content_y))
+            self.screen.blit(cred_surf, cred_rect)
+            
+            # Footer
+            footer_surf = self.font_small.render("Press any key to close", True, (100, 100, 100))
+            footer_rect = footer_surf.get_rect(center=(dialog_x + dialog_width // 2, dialog_y + dialog_height - 20))
+            self.screen.blit(footer_surf, footer_rect)
+            
+            pygame.display.flip()
+            self.clock.tick(60)
+        
+        # If we clicked outside an active menu, close it but don't consume click immediately?
+        # Actually, standard behavior is to close menu and consume click if it was outside.
+        # But if we want to allow clicking toolbar while menu is open, we should be careful.
+        # For now, let's just ensure we don't fall through to viewports if menu was open.
+        if self.active_menu:
+            self.active_menu = None
+            return True
+
+        toolbar_x = 10
+        button_y = 40
+        button_height = 50
+        button_width = 50
+        for i, tool in enumerate(Tool):
+            button_rect = pygame.Rect(toolbar_x, button_y + i * (button_height + 5),
+                                      button_width, button_height)
+            if button_rect.collidepoint(pos):
+                self.current_tool = tool
+                return True
+        return False
+        return False
+
+    def check_menu_click(self, pos):
         menus = ["File", "Edit", "View", "Tools", "Help"]
+        
+        # Check if clicking inside an open dropdown
+        if self.active_menu:
+            dropdown_rect, item = self.get_dropdown_rect_and_item(pos)
+            if dropdown_rect and dropdown_rect.collidepoint(pos):
+                if item:
+                    # Handle menu action
+                    if "---" not in item:
+                        self.execute_menu_action(self.active_menu, item)
+                    self.active_menu = None
+                return True
+                
         x = 10
         menu_height = 30
         for menu in menus:
@@ -1348,7 +1565,7 @@ class HammerEditor:
                 self.selected_enemy = None
         elif menu == "Help":
             if "About" in item:
-                print("DoomClone Hammer Editor v1.0")
+                self.show_about_dialog()
 
     def open_level_dialog(self):
         """Open file dialog to select a level file"""
@@ -2661,7 +2878,7 @@ class HammerEditor:
 
 # === MAIN ===
 def main():
-    editor = HammerEditor()
+    editor = OracularEditor()
     editor.load_level()
     editor.run()
 
