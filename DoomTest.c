@@ -1,3 +1,4 @@
+#define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
 #include <GL/glut.h>
 #include <math.h>
@@ -106,6 +107,7 @@ void drawEnemies();
 void drawConsoleText();
 void drawWallDebugOverlay();
 void drawPauseMenu();
+int checkWallCollision(int newX, int newY);
 
 void load()
 {
@@ -113,35 +115,53 @@ void load()
 	if (fp == NULL) { printf("Error opening level.h"); return; }
 	int s, w;
 
-	fscanf_s(fp, "%i", &numSect);   //number of sectors 
+	fscanf(fp, "%i", &numSect);   //number of sectors 
 	for (s = 0; s < numSect; s++)      //load all sectors
 	{
-		fscanf_s(fp, "%i", &S[s].ws);
-		fscanf_s(fp, "%i", &S[s].we);
-		fscanf_s(fp, "%i", &S[s].z1);
-		fscanf_s(fp, "%i", &S[s].z2);
-		fscanf_s(fp, "%i", &S[s].st);
-		fscanf_s(fp, "%i", &S[s].ss);
+		fscanf(fp, "%i", &S[s].ws);
+		fscanf(fp, "%i", &S[s].we);
+		fscanf(fp, "%i", &S[s].z1);
+		fscanf(fp, "%i", &S[s].z2);
+		fscanf(fp, "%i", &S[s].st);
+		fscanf(fp, "%i", &S[s].ss);
 	}
-	fscanf_s(fp, "%i", &numWall);   //number of walls 
+	fscanf(fp, "%i", &numWall);   //number of walls 
 	for (s = 0; s < numWall; s++)      //load all walls
 	{
-		fscanf_s(fp, "%i", &W[s].x1);
-		fscanf_s(fp, "%i", &W[s].y1);
-		fscanf_s(fp, "%i", &W[s].x2);
-		fscanf_s(fp, "%i", &W[s].y2);
-		fscanf_s(fp, "%i", &W[s].wt);
-		fscanf_s(fp, "%i", &W[s].u);
-		fscanf_s(fp, "%i", &W[s].v);
-		fscanf_s(fp, "%i", &W[s].shade);
+		fscanf(fp, "%i", &W[s].x1);
+		fscanf(fp, "%i", &W[s].y1);
+		fscanf(fp, "%i", &W[s].x2);
+		fscanf(fp, "%i", &W[s].y2);
+		fscanf(fp, "%i", &W[s].wt);
+		fscanf(fp, "%i", &W[s].u);
+		fscanf(fp, "%i", &W[s].v);
+		fscanf(fp, "%i", &W[s].shade);
 	}
-	fscanf_s(fp, "%i %i %i %i %i", &P.x, &P.y, &P.z, &P.a, &P.l); //player position, angle, look direction 
+	fscanf(fp, "%i %i %i %i %i", &P.x, &P.y, &P.z, &P.a, &P.l); //player position, angle, look direction 
+
+	// Load enemies
+	int num_loaded_enemies = 0;
+	if (fscanf(fp, "%i", &num_loaded_enemies) != EOF) {
+		initEnemies(); // Reset enemies
+		if (num_loaded_enemies > MAX_ENEMIES) num_loaded_enemies = MAX_ENEMIES;
+		numEnemies = num_loaded_enemies;
+
+		for (s = 0; s < numEnemies; s++)
+		{
+			int type;
+			fscanf(fp, "%i %i %i %i", &enemies[s].x, &enemies[s].y, &enemies[s].z, &type);
+			enemies[s].enemyType = type;
+			enemies[s].active = 1;
+			enemies[s].state = 0; // Idle
+			enemies[s].animFrame = 0;
+			enemies[s].lastAnimTime = 0;
+		}
+	}
+
 	fclose(fp);
 }
 
 void pixel(int x, int y, int r, int g, int b) { //draws pixel at x,y with color c
-
-	//if (c == 6) { rgb[0] = 0; rgb[1] = 60; rgb[2] = 130; } //background 
 	glColor3ub(r, g, b);
 	glBegin(GL_POINTS);
 	glVertex2i(x * pixelScale + 2, y * pixelScale + 2);
@@ -152,7 +172,7 @@ void movePl()
 {
 	// Don't move if console is active or game is paused
 	if (console.active || gamePaused) return;
-	
+
 	//move up, down, left, right
 	if (K.a == 1 && K.m == 0) { P.a -= 4; if (P.a < 0) { P.a += 360; } }
 	if (K.d == 1 && K.m == 0) { P.a += 4; if (P.a > 359) { P.a -= 360; } }

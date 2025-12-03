@@ -1,6 +1,8 @@
+#define _CRT_SECURE_NO_WARNINGS
 #include "fps_counter.h"
 #include "console_font.h"  // Use the same font as console
 #include <stdio.h>
+#include <stdlib.h>
 
 // FPS counter state
 typedef struct {
@@ -37,7 +39,7 @@ void drawFPSCounter(void (*pixelFunc)(int, int, int, int, int), int screenHeight
 	
 	// Format FPS as string
 	char fpsText[16];
-	sprintf_s(fpsText, sizeof(fpsText), "FPS: %d", fpsCounter.fps);
+	snprintf(fpsText, sizeof(fpsText), "FPS: %d", fpsCounter.fps);
 	
 	// Draw using console font in top-left corner (white text)
 	drawString(5, screenHeight - 10, fpsText, 255, 255, 255, pixelFunc);
@@ -110,31 +112,31 @@ void drawDebugOverlay(void (*pixelFunc)(int, int, int, int, int), int screenWidt
 	int yPos = screenHeight - 10;
 	
 	// FPS (top left - white)
-	sprintf_s(debugText, sizeof(debugText), "FPS: %d", fpsCounter.fps);
+	snprintf(debugText, sizeof(debugText), "FPS: %d", fpsCounter.fps);
 	drawString(5, yPos, debugText, 255, 255, 255, pixelFunc);
 	yPos -= 12;
 	
 	// Player X position (red)
-	sprintf_s(debugText, sizeof(debugText), "X: %d", playerX);
+	snprintf(debugText, sizeof(debugText), "X: %d", playerX);
 	drawString(5, yPos, debugText, 255, 100, 100, pixelFunc);
 	yPos -= 12;
 	
 	// Player Y position (green)
-	sprintf_s(debugText, sizeof(debugText), "Y: %d", playerY);
+	snprintf(debugText, sizeof(debugText), "Y: %d", playerY);
 	drawString(5, yPos, debugText, 100, 255, 100, pixelFunc);
 	yPos -= 12;
 	
 	// Player Z position (blue)
-	sprintf_s(debugText, sizeof(debugText), "Z: %d", playerZ);
+	snprintf(debugText, sizeof(debugText), "Z: %d", playerZ);
 	drawString(5, yPos, debugText, 100, 100, 255, pixelFunc);
 	yPos -= 12;
 	
 	// Player angle (yellow)
-	sprintf_s(debugText, sizeof(debugText), "Angle: %d", playerAngle);
+	snprintf(debugText, sizeof(debugText), "Angle: %d", playerAngle);
 	drawString(5, yPos, debugText, 255, 255, 100, pixelFunc);
 	yPos -= 12;
 	
 	// Player look (cyan)
-	sprintf_s(debugText, sizeof(debugText), "Look: %d", playerLook);
+	snprintf(debugText, sizeof(debugText), "Look: %d", playerLook);
 	drawString(5, yPos, debugText, 100, 255, 255, pixelFunc);
 }

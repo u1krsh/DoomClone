@@ -1,10 +1,4 @@
 #!/usr/bin/env python3
-"""
-Valve Oracular-Style Editor for 
-Professional 4-way viewport map editor with all features
-Inspired by Valve Oracular Editor
-"""
-
 import pygame
 import sys
 import math
@@ -101,6 +95,15 @@ class Player:
         self.a = a  # angle
         self.l = l  # look up/down
 
+# ADDED: Enemy class
+class Enemy:
+    def __init__(self, x=0, y=0, z=0, enemy_type=0):
+        self.x = x
+        self.y = y
+        self.z = z
+        self.enemy_type = enemy_type # 0=BOSSA1, 1=BOSSA2, 2=BOSSA3
+        self.active = 1
+
 # ADDED: Texture class
 class Texture:
     def __init__(self, name: str, frames: List[pygame.Surface], frame_duration: int = 150):
@@ -151,10 +154,17 @@ class Viewport:
 # === MAIN EDITOR CLASS ===
 class HammerEditor:
     def __init__(self):
+        self.width = WINDOW_WIDTH
+        self.height = WINDOW_HEIGHT
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         pygame.display.set_caption("DoomClone Hammer Editor")
         self.clock = pygame.time.Clock()
         self.running = True
+        
+        # Notification state
+        self.notification_message = ""
+        self.notification_timer = 0.0
+        self.notification_duration = 2.0 # seconds
         
         # Fonts
         self.font_small = pygame.font.SysFont('Segoe UI', 12)
@@ -200,6 +210,10 @@ class HammerEditor:
         self.selected_wall = None
         self.selected_vertices = []
         
+        # ADDED: Enemy list and selection
+        self.enemies = []
+        self.selected_enemy = None
+        
         self.show_grid = True
         self.snap_to_grid = True
         
@@ -223,8 +237,12 @@ class HammerEditor:
         self.prop_sector_texture = 0
         self.prop_sector_scale = 4
         
+        # ADDED: Enemy defaults
+        self.prop_enemy_type = 0
+        
         # ADDED: textures
         self.textures: List[Texture] = []
+        self.enemy_textures: List[Texture] = [] # ADDED: Enemy textures
         self.load_textures()
         
         # Setup viewports (4-way layout)
@@ -270,15 +288,18 @@ class HammerEditor:
                 
             surfaces = []
             
-            # If specific variable names are provided, look for them
-            # Otherwise, find all arrays
-            
-            # Regex to find array definitions: const char NAME[] = { ... };
-            # We need to handle 'unsigned char' and 'char'
-            # We also need to find corresponding WIDTH and HEIGHT defines
-            
-            # Strategy: Find all array definitions first
-            # Matches: [static] [const] [unsigned] char NAME[] = { ... }
+            # Parse dimension arrays first (int arrays)
+            dim_arrays = {}
+            int_array_matches = list(re.finditer(r'(?:static\s+)?(?:const\s+)?int\s+([a-zA-Z0-9_]+)(?:\[\d*\])?\s*=\s*\{([^}]*)\}', data, re.DOTALL))
+            for match in int_array_matches:
+                name = match.group(1)
+                content = match.group(2)
+                vals = []
+                for num in re.findall(r'\b\d+\b', content):
+                    vals.append(int(num))
+                dim_arrays[name] = vals
+
+            # Find all char array definitions (texture data)
             array_matches = list(re.finditer(r'(?:static\s+)?(?:const\s+)?(?:unsigned\s+)?char\s+([a-zA-Z0-9_]+)(?:\[\])?\s*=\s*\{([^}]*)\}', data, re.DOTALL))
             
             for match in array_matches:
@@ -289,23 +310,58 @@ class HammerEditor:
                     continue
                     
                 # Find dimensions for this array
-                # Look for #define NAME_WIDTH 64
-                w_match = re.search(f'#define\s+{name}_WIDTH\s+(\d+)', data)
-                h_match = re.search(f'#define\s+{name}_HEIGHT\s+(\d+)', data)
+                width = 0
+                height = 0
                 
-                # Fallback: try finding generic WIDTH/HEIGHT if not specific (e.g. WALL58_FRAME_WIDTH)
+                # 1. Look for #define NAME_WIDTH 64
+                w_match = re.search(f'#define\\s+{name}_WIDTH\\s+(\\d+)', data)
+                h_match = re.search(f'#define\\s+{name}_HEIGHT\\s+(\\d+)', data)
+                
+                # 1b. Look for #define NAME_FRAME_WIDTH (common for animated textures)
                 if not w_match:
-                    w_match = re.search(r'#define\s+[A-Z0-9_]+_WIDTH\s+(\d+)', data)
+                    # Try stripping _frame_X suffix
+                    base_name = re.sub(r'_frame_\\d+$', '', name)
+                    w_match = re.search(f'#define\\s+{base_name}_FRAME_WIDTH\\s+(\\d+)', data)
+                    if not w_match:
+                        w_match = re.search(f'#define\\s+{base_name}_WIDTH\\s+(\\d+)', data)
+                
                 if not h_match:
-                    h_match = re.search(r'#define\s+[A-Z0-9_]+_HEIGHT\s+(\d+)', data)
-                    
-                if not (w_match and h_match):
+                    base_name = re.sub(r'_frame_\\d+$', '', name)
+                    h_match = re.search(f'#define\\s+{base_name}_FRAME_HEIGHT\\s+(\\d+)', data)
+                    if not h_match:
+                        h_match = re.search(f'#define\\s+{base_name}_HEIGHT\\s+(\\d+)', data)
+                
+                if w_match and h_match:
+                    width = int(w_match.group(1))
+                    height = int(h_match.group(1))
+                else:
+                    # 2. Fallback: try finding generic WIDTH/HEIGHT
+                    if not w_match:
+                        w_match = re.search(r'#define\\s+[A-Z0-9_]+_WIDTH\\s+(\\d+)', data)
+                    if not h_match:
+                        h_match = re.search(r'#define\\s+[A-Z0-9_]+_HEIGHT\\s+(\\d+)', data)
+                        
+                    if w_match and h_match:
+                        width = int(w_match.group(1))
+                        height = int(h_match.group(1))
+                    else:
+                        # 3. Fallback: Check for array-based dimensions
+                        frame_match = re.match(r'([a-zA-Z0-9_]+)_frame_(\d+)', name)
+                        if frame_match:
+                            prefix = frame_match.group(1)
+                            idx = int(frame_match.group(2))
+                            w_arr_name = f"{prefix}_frame_widths"
+                            h_arr_name = f"{prefix}_frame_heights"
+                            
+                            if w_arr_name in dim_arrays and h_arr_name in dim_arrays:
+                                if idx < len(dim_arrays[w_arr_name]) and idx < len(dim_arrays[h_arr_name]):
+                                    width = dim_arrays[w_arr_name][idx]
+                                    height = dim_arrays[h_arr_name][idx]
+
+                if width == 0 or height == 0:
                     print(f"Could not find dimensions for {name} in {filename}")
                     continue
                     
-                width = int(w_match.group(1))
-                height = int(h_match.group(1))
-                
                 # Parse pixel data
                 pixel_vals = []
                 for num in re.findall(r'\b\d+\b', content):
@@ -328,7 +384,7 @@ class HammerEditor:
                 
                 surfaces.append((name, surface))
                 
-            # Sort surfaces if var_names provided to match order
+            # Sort surfaces if var_names provided
             if var_names:
                 ordered_surfaces = []
                 surface_map = {name: surf for name, surf in surfaces}
@@ -387,6 +443,33 @@ class HammerEditor:
             self.textures.append(Texture("WALL58 (MISSING)", [s]))
             
         print(f"Loaded {len(self.textures)} textures in game order.")
+
+        # 4. Load Enemy Textures
+        # BOSSA1
+        bossa1_frames = self.parse_texture_file("BOSSA1.h", ["BOSSA1"])
+        if bossa1_frames:
+            self.enemy_textures.append(Texture("BOSSA1", bossa1_frames))
+        else:
+            s = pygame.Surface((64, 64)); s.fill((255, 0, 0))
+            self.enemy_textures.append(Texture("BOSSA1 (MISSING)", [s]))
+            
+        # BOSSA2 (using walk frames as default visualization)
+        bossa2_frames = self.parse_texture_file("BOSSA2_walk.h", ["BOSSA2_frame_0", "BOSSA2_frame_1"])
+        if bossa2_frames:
+            self.enemy_textures.append(Texture("BOSSA2", bossa2_frames, 200))
+        else:
+            s = pygame.Surface((64, 64)); s.fill((0, 255, 255))
+            self.enemy_textures.append(Texture("BOSSA2 (MISSING)", [s]))
+            
+        # BOSSA3 (using walk frames)
+        bossa3_frames = self.parse_texture_file("BOSSA3_walk.h", ["BOSSA3_frame_0", "BOSSA3_frame_1"])
+        if bossa3_frames:
+            self.enemy_textures.append(Texture("BOSSA3", bossa3_frames, 200))
+        else:
+            s = pygame.Surface((64, 64)); s.fill((255, 0, 255))
+            self.enemy_textures.append(Texture("BOSSA3 (MISSING)", [s]))
+            
+        print(f"Loaded {len(self.enemy_textures)} enemy textures.")
 
     def setup_viewports(self):
         """Setup 4-way viewport layout"""
@@ -486,6 +569,10 @@ class HammerEditor:
         """Handle continuous keyboard input for smooth camera movement"""
         if not self.active_viewport or self.active_viewport.view_type != ViewType.CAMERA_3D:
             return
+            
+        # Ignore if Ctrl is pressed (to avoid conflict with shortcuts like Ctrl+S)
+        if pygame.key.get_mods() & pygame.KMOD_CTRL:
+            return
         
         keys = pygame.key.get_pressed()
         move_speed = 10
@@ -551,18 +638,23 @@ class HammerEditor:
                 self.handle_mouse_wheel(event)
     
     # ADDED: Undo/Redo methods
+        if len(self.undo_stack) > 50:
+            self.undo_stack.pop(0)
+
     def save_undo_snapshot(self):
         """Save current state to undo stack"""
         state = {
             'sectors': copy.deepcopy(self.sectors),
             'walls': copy.deepcopy(self.walls),
-            'player': copy.deepcopy(self.player)
+            'player': copy.deepcopy(self.player),
+            'enemies': copy.deepcopy(self.enemies)
         }
         self.undo_stack.append(state)
         self.redo_stack.clear()
         # Limit stack size
         if len(self.undo_stack) > 50:
             self.undo_stack.pop(0)
+
 
     def undo(self):
         """Undo last action"""
@@ -583,12 +675,15 @@ class HammerEditor:
         self.sectors = state['sectors']
         self.walls = state['walls']
         self.player = state['player']
+        self.enemies = state.get('enemies', [])
         
         # Reset selection if invalid
         if self.selected_sector is not None and self.selected_sector >= len(self.sectors):
             self.selected_sector = None
         if self.selected_wall is not None and self.selected_wall >= len(self.walls):
             self.selected_wall = None
+        if self.selected_enemy is not None and self.selected_enemy >= len(self.enemies):
+            self.selected_enemy = None
         self.selected_vertices = [] # Clear vertex selection to be safe
         
         print("Undo performed")
@@ -612,6 +707,7 @@ class HammerEditor:
         self.sectors = state['sectors']
         self.walls = state['walls']
         self.player = state['player']
+        self.enemies = state.get('enemies', [])
         
         print("Redo performed")
 
@@ -641,6 +737,8 @@ class HammerEditor:
                 self.prop_wall_texture = target.wt
                 self.prop_wall_u = target.u
                 self.prop_wall_v = target.v
+            elif isinstance(target, Enemy):
+                self.prop_enemy_type = target.enemy_type
         self.edit_field = None
         self.edit_buffer = ""
 
@@ -675,6 +773,7 @@ class HammerEditor:
             self.selected_sector = None
             self.selected_wall = None
             self.selected_vertices = []
+            self.selected_enemy = None
         elif event.key == pygame.K_3:
             self.current_tool = Tool.VERTEX_EDIT
         elif event.key == pygame.K_4:
@@ -704,14 +803,23 @@ class HammerEditor:
         if event.button == 1:
             self.mouse_down = True
             self.last_mouse_pos = event.pos
-            # Property panel click first (to avoid viewport selection overriding edits)
+            
+            # Check UI clicks FIRST (Menu, Toolbar, Properties)
+            # This prevents clicks from falling through to viewports
+            
+            # 1. Menu Bar & Dropdowns
+            if self.check_ui_click(event.pos):
+                return
+
+            # 2. Property panel
             if self.handle_property_click(event.pos):
                 return
             
-            # Toolbar click
+            # 3. Toolbar
             if self.handle_toolbar_click(event.pos):
                 return
                 
+            # 4. Viewports
             for vp in self.viewports:
                 if vp.rect.collidepoint(event.pos):
                     self.active_viewport = vp
@@ -736,9 +844,15 @@ class HammerEditor:
                         if self.selected_vertices:
                             self.save_undo_snapshot() # Save before drag starts
                             self.dragging_geometry = True
+                    elif self.current_tool == Tool.ENTITY:
+                        self.handle_entity_click(vp, event.pos)
+                        if self.selected_enemy is not None:
+                            self.save_undo_snapshot()
+                            self.dragging_geometry = True
                 else:
                     vp.is_active = False
-            self.check_ui_click(event.pos)
+            
+            # self.check_ui_click(event.pos) # MOVED TO TOP
         elif event.button == 3:
             self.last_mouse_pos = event.pos
 
@@ -798,6 +912,27 @@ class HammerEditor:
                         wall.x2 = round(wall.x2 / vp.grid_size) * vp.grid_size
                         wall.y2 = round(wall.y2 / vp.grid_size) * vp.grid_size
 
+    def drag_enemy(self, pos):
+        vp = self.active_viewport
+        if not vp or vp.view_type != ViewType.TOP:
+            return
+            
+        wx, wy = vp.screen_to_world(pos[0], pos[1])
+        prev_wx, prev_wy = vp.screen_to_world(self.last_mouse_pos[0], self.last_mouse_pos[1])
+        
+        dx = wx - prev_wx
+        dy = wy - prev_wy
+        
+        if self.selected_enemy is not None and self.selected_enemy < len(self.enemies):
+            enemy = self.enemies[self.selected_enemy]
+            enemy.x += dx
+            enemy.y += dy
+            
+            if self.snap_to_grid:
+                enemy.x = round(enemy.x / vp.grid_size) * vp.grid_size
+                enemy.y = round(enemy.y / vp.grid_size) * vp.grid_size
+
+
     # ADDED: property click handler
     def handle_property_click(self, pos):
         panel_width = 280
@@ -818,6 +953,16 @@ class HammerEditor:
                     return True
                 elif self.current_tool == Tool.CREATE_SECTOR:
                     self.prop_wall_texture = (self.prop_wall_texture + delta) % max(1, len(self.textures))
+                    return True
+                elif self.current_tool == Tool.ENTITY:
+                     # If enemy selected, change its type
+                    if self.selected_enemy is not None:
+                        enemy = self.enemies[self.selected_enemy]
+                        enemy.enemy_type = (enemy.enemy_type + delta) % max(1, len(self.enemy_textures))
+                        self.prop_enemy_type = enemy.enemy_type
+                    else:
+                        # Change default type
+                        self.prop_enemy_type = (self.prop_enemy_type + delta) % max(1, len(self.enemy_textures))
                     return True
         # Property items
         for item in self.property_items:
@@ -892,6 +1037,8 @@ class HammerEditor:
                  self.drag_sector(event.pos)
              elif self.current_tool == Tool.VERTEX_EDIT and self.selected_vertices:
                  self.drag_vertices(event.pos)
+             elif self.current_tool == Tool.ENTITY and self.selected_enemy is not None:
+                 self.drag_enemy(event.pos)
              self.last_mouse_pos = event.pos
              return
 
@@ -977,6 +1124,39 @@ class HammerEditor:
             else:
                 self.selected_vertices.append((nearest_wall_idx, nearest_vertex))
 
+    def handle_entity_click(self, vp, pos):
+        if vp.view_type != ViewType.TOP:
+            return
+            
+        wx, wy = vp.screen_to_world(pos[0], pos[1])
+        
+        # Check if clicked on existing enemy
+        clicked_enemy = None
+        min_dist = float('inf')
+        
+        for i, enemy in enumerate(self.enemies):
+            dist = math.sqrt((wx - enemy.x)**2 + (wy - enemy.y)**2)
+            if dist < 10 / vp.zoom: # Hitbox
+                if dist < min_dist:
+                    min_dist = dist
+                    clicked_enemy = i
+        
+        if clicked_enemy is not None:
+            self.selected_enemy = clicked_enemy
+            self.selected_sector = None
+            self.selected_wall = None
+            return
+            
+        # If no enemy clicked, create new one
+        if self.snap_to_grid:
+            wx, wy = vp.snap_to_grid(wx, wy)
+            
+        self.save_undo_snapshot()
+        self.enemies.append(Enemy(int(wx), int(wy), 0, self.prop_enemy_type))
+        self.selected_enemy = len(self.enemies) - 1
+        print(f"Created enemy at {int(wx)}, {int(wy)}")
+
+
     def finish_sector_creation(self):
         if len(self.sector_vertices) < 3:
             print("Need at least 3 vertices to create a sector")
@@ -1041,11 +1221,20 @@ class HammerEditor:
                 return
 
     def check_ui_click(self, pos):
-        if pos[1] < 30:
+        # Check menu if active OR if clicking in menu bar area
+        if self.active_menu or pos[1] < 30:
             menu_clicked = self.check_menu_click(pos)
             if menu_clicked:
-                return
-        self.active_menu = None
+                return True
+        
+        # If we clicked outside an active menu, close it but don't consume click immediately?
+        # Actually, standard behavior is to close menu and consume click if it was outside.
+        # But if we want to allow clicking toolbar while menu is open, we should be careful.
+        # For now, let's just ensure we don't fall through to viewports if menu was open.
+        if self.active_menu:
+            self.active_menu = None
+            return True
+
         toolbar_x = 10
         button_y = 40
         button_height = 50
@@ -1055,28 +1244,38 @@ class HammerEditor:
                                       button_width, button_height)
             if button_rect.collidepoint(pos):
                 self.current_tool = tool
-                return
+                return True
+        return False
 
     def check_menu_click(self, pos):
-        menus = ["File", "Edit", "View", "Tools", "Help"]
-        x = 10
-        menu_height = 30
-        for menu in menus:
-            text = self.font_medium.render(menu, True, Colors.TEXT)
-            menu_width = text.get_width() + 20
-            if menu == self.active_menu or (x <= pos[0] <= x + menu_width and pos[1] < menu_height):
-                if menu == self.active_menu:
-                    self.active_menu = None
-                else:
-                    self.active_menu = menu
-                return True
-            x += menu_width
+        # 1. Check Dropdown Items FIRST
         if self.active_menu:
             dropdown_rect, selected_item = self.get_dropdown_rect_and_item(pos)
             if selected_item:
                 self.execute_menu_action(self.active_menu, selected_item)
                 self.active_menu = None
                 return True
+            # If clicked inside dropdown rect but not on item (e.g. separator), consume click
+            if dropdown_rect and dropdown_rect.collidepoint(pos):
+                return True
+
+        # 2. Check Menu Bar
+        menus = ["File", "Edit", "View", "Tools", "Help"]
+        x = 10
+        menu_height = 30
+        for menu in menus:
+            text = self.font_medium.render(menu, True, Colors.TEXT)
+            menu_width = text.get_width() + 20
+            
+            # Check if clicked on this menu header
+            if x <= pos[0] <= x + menu_width and pos[1] < menu_height:
+                if menu == self.active_menu:
+                    self.active_menu = None # Toggle off
+                else:
+                    self.active_menu = menu # Switch to this menu
+                return True
+            x += menu_width
+            
         return False
 
     def get_dropdown_rect_and_item(self, pos):
@@ -1146,6 +1345,7 @@ class HammerEditor:
                 self.current_tool = Tool.VERTEX_EDIT
             elif "Entity" in item:
                 self.current_tool = Tool.ENTITY
+                self.selected_enemy = None
         elif menu == "Help":
             if "About" in item:
                 print("DoomClone Hammer Editor v1.0")
@@ -1200,6 +1400,13 @@ class HammerEditor:
             
             self.selected_sector = None
             self.selected_wall = None
+            print("Deleted sector")
+            
+        elif self.selected_enemy is not None:
+            if 0 <= self.selected_enemy < len(self.enemies):
+                self.enemies.pop(self.selected_enemy)
+                self.selected_enemy = None
+                print("Deleted enemy")
     
     def new_level(self):
         """Create new level"""
@@ -1209,6 +1416,8 @@ class HammerEditor:
         self.selected_sector = None
         self.selected_wall = None
         self.selected_vertices = []
+        self.enemies = []
+        self.selected_enemy = None
         self.creating_sector = False
         self.sector_vertices = []
         self.current_level_path = DEFAULT_LEVEL_PATH  # Reset to default path
@@ -1237,10 +1446,19 @@ class HammerEditor:
                 
                 # Write player
                 f.write(f"\n{self.player.x} {self.player.y} {self.player.z} {self.player.a} {self.player.l}\n")
+                
+                # Write enemies
+                f.write(f"\n{len(self.enemies)}\n")
+                for e in self.enemies:
+                    f.write(f"{e.x} {e.y} {e.z} {e.enemy_type}\n")
             
             print(f"Level saved to {self.current_level_path}")
+            self.notification_message = "Level Saved!"
+            self.notification_timer = self.notification_duration
         except Exception as e:
             print(f"Error saving level: {e}")
+            self.notification_message = "Error Saving!"
+            self.notification_timer = self.notification_duration
     
     def load_level(self):
         """Load level from current file path"""
@@ -1273,6 +1491,23 @@ class HammerEditor:
                 parts = list(map(int, lines[player_line].split()))
                 self.player = Player(*parts)
             
+            # Parse enemies (if available)
+            self.enemies = []
+            enemy_line = player_line + 2
+            if enemy_line < len(lines):
+                try:
+                    num_enemies = int(lines[enemy_line].strip())
+                    for i in range(enemy_line + 1, enemy_line + 1 + num_enemies):
+                        if i < len(lines):
+                            parts = list(map(int, lines[i].split()))
+                            if len(parts) >= 4:
+                                self.enemies.append(Enemy(parts[0], parts[1], parts[2], parts[3]))
+                            else:
+                                # Backward compatibility or malformed line
+                                self.enemies.append(Enemy(parts[0], parts[1], parts[2], 0))
+                except ValueError:
+                    print("No enemies found or invalid format")
+            
             # Center viewports on the loaded geometry
             self.center_viewports_on_level()
             
@@ -1295,6 +1530,15 @@ class HammerEditor:
                 self.prop_wall_texture = wall.wt
                 self.prop_wall_u = wall.u
                 self.prop_wall_v = wall.v
+        
+        if self.selected_enemy is not None and self.selected_enemy < len(self.enemies):
+            enemy = self.enemies[self.selected_enemy]
+            self.prop_enemy_type = enemy.enemy_type
+            
+        # Update notification timer
+        if self.notification_timer > 0:
+            self.notification_timer -= 1.0 / FPS
+
     
     def render(self):
         """Render the editor"""
@@ -1319,8 +1563,36 @@ class HammerEditor:
         # Draw dropdown menu LAST so it appears on top of everything
         if self.active_menu:
             self.draw_dropdown_menu(self.active_menu)
+            
+        # Draw notification
+        if self.notification_timer > 0:
+            self.draw_notification()
         
         pygame.display.flip()
+    
+    def draw_notification(self):
+        """Draw fading notification message"""
+        if not self.notification_message:
+            return
+            
+        alpha = min(255, int(255 * (self.notification_timer / 1.0))) # Fade out in last 1 second
+        if self.notification_timer > 1.0:
+            alpha = 255
+            
+        text_surf = self.font_title.render(self.notification_message, True, Colors.ACCENT_BRIGHT)
+        text_surf.set_alpha(alpha)
+        
+        padding = 10
+        x = WINDOW_WIDTH - text_surf.get_width() - padding
+        y = WINDOW_HEIGHT - self.STATUS_BAR_HEIGHT - text_surf.get_height() - padding
+        
+        # Background for better visibility
+        bg_surf = pygame.Surface((text_surf.get_width() + 20, text_surf.get_height() + 10))
+        bg_surf.fill(Colors.BG_DARK)
+        bg_surf.set_alpha(int(alpha * 0.8))
+        
+        self.screen.blit(bg_surf, (x - 10, y - 5))
+        self.screen.blit(text_surf, (x, y))
     
     def draw_menu_bar_base(self):
         """Draw top menu bar (without dropdown)"""
@@ -1465,6 +1737,10 @@ class HammerEditor:
                     self.selected_sector = None
                     self.selected_wall = None
                     self.selected_vertices = []
+                elif tool == Tool.ENTITY:
+                    self.selected_sector = None
+                    self.selected_wall = None
+                    self.selected_vertices = []
                 return True
             button_y += button_size + 10
             
@@ -1569,6 +1845,10 @@ class HammerEditor:
             
             # Draw player
             self.draw_player_2d(vp)
+            
+            # Draw enemies
+            for i, enemy in enumerate(self.enemies):
+                self.draw_enemy_2d(vp, enemy, i == self.selected_enemy)
         
         elif vp.view_type in (ViewType.FRONT, ViewType.SIDE):
             # Front/Side view: Draw sectors as rectangles with height
@@ -1745,6 +2025,20 @@ class HammerEditor:
         dx = int(px + math.sin(angle_rad) * dir_length)
         dy = int(py - math.cos(angle_rad) * dir_length)
         pygame.draw.line(self.screen, Colors.PLAYER, (px, py), (dx, dy), 2)
+
+    def draw_enemy_2d(self, vp, enemy, is_selected):
+        """Draw enemy in 2D view"""
+        ex, ey = vp.world_to_screen(enemy.x, enemy.y)
+        
+        color = (255, 0, 0) # Red
+        if enemy.enemy_type == 1: color = (0, 255, 255) # Cyan
+        elif enemy.enemy_type == 2: color = (255, 0, 255) # Magenta
+        
+        size = 6 if is_selected else 5
+        pygame.draw.circle(self.screen, color, (ex, ey), size)
+        if is_selected:
+            pygame.draw.circle(self.screen, (255, 255, 255), (ex, ey), size + 2, 1)
+
     
     def draw_sector_creation_preview(self, vp):
         """Draw preview of sector being created"""
@@ -1792,6 +2086,10 @@ class HammerEditor:
         # Simple 3D projection (basic wireframe)
         if len(self.walls) > 0:
             self.draw_3d_walls(vp)
+            
+        # Draw enemies in 3D
+        if len(self.enemies) > 0:
+            self.draw_3d_enemies(vp)
         
         # Draw controls overlay if this is the active viewport
         if vp.is_active:
@@ -2003,6 +2301,82 @@ class HammerEditor:
             else:
                 self.screen.blit(scaled_col, (x, draw_y))
     
+    def draw_3d_enemies(self, vp):
+        """Draw enemies in 3D view (billboards)"""
+        cam_x = self.player.x
+        cam_y = self.player.y
+        cam_z = self.player.z
+        cam_angle = math.radians(self.player.a)
+        
+        cos_a = math.cos(cam_angle)
+        sin_a = math.sin(cam_angle)
+        
+        # Sort enemies by distance
+        sorted_enemies = []
+        for i, enemy in enumerate(self.enemies):
+            dist_sq = (enemy.x - cam_x)**2 + (enemy.y - cam_y)**2
+            sorted_enemies.append((dist_sq, enemy))
+        
+        sorted_enemies.sort(key=lambda x: x[0], reverse=True)
+        
+        for _, enemy in sorted_enemies:
+            # Transform to camera space
+            rel_x = enemy.x - cam_x
+            rel_y = enemy.y - cam_y
+            
+            # Rotate
+            rot_x = rel_x * cos_a - rel_y * sin_a
+            rot_y = rel_x * sin_a + rel_y * cos_a
+            
+            if rot_y < 1: continue
+            
+            # Project
+            scale = 200
+            screen_x = int(vp.rect.x + vp.rect.width // 2 + rot_x * scale / rot_y)
+            screen_y = int(vp.rect.y + vp.rect.height // 2 - (enemy.z - cam_z) * scale / rot_y)
+            
+            size = int(64 * scale / rot_y)
+            if size < 1: continue
+            
+            # Draw simple circle/rect for now
+            # Use texture if available
+            tex_idx = enemy.enemy_type
+            if 0 <= tex_idx < len(self.enemy_textures):
+                tex = self.enemy_textures[tex_idx]
+                frame = tex.get_current_frame()
+                
+                # Scale frame
+                # Assuming frame is roughly 64x64 or similar, we scale it to 'size'
+                # Maintain aspect ratio
+                w, h = frame.get_size()
+                aspect = w / h
+                
+                draw_h = size
+                draw_w = int(size * aspect)
+                
+                scaled_frame = pygame.transform.scale(frame, (draw_w, draw_h))
+                
+                screen_x_mid = screen_x
+                screen_y_mid = screen_y
+                
+                dest_rect = scaled_frame.get_rect(center=(screen_x_mid, screen_y_mid))
+                
+                # Clip
+                if dest_rect.colliderect(vp.rect):
+                    self.screen.blit(scaled_frame, dest_rect)
+            else:
+                # Fallback
+                color = (255, 0, 0)
+                if enemy.enemy_type == 1: color = (0, 255, 255)
+                elif enemy.enemy_type == 2: color = (255, 0, 255)
+                
+                rect = pygame.Rect(screen_x - size//2, screen_y - size//2, size, size)
+                
+                # Clip to viewport
+                if rect.colliderect(vp.rect):
+                    pygame.draw.rect(self.screen, color, rect)
+
+    
     def clip_behind_camera(self, x1, y1, z1, x2, y2, z2):
         """Clip line segment behind camera"""
         if y1 == 0:
@@ -2151,6 +2525,52 @@ class HammerEditor:
                     self.screen.blit(t_surf, t_rect)
                     self.texture_nav_buttons.append((rect, delta))
                 y += btn_h + 10
+        elif self.current_tool == Tool.ENTITY and self.selected_enemy is None:
+            self.draw_property_label("New Enemy Defaults", panel_x + 10, y); y += 25
+            add_editable("Type (0-2)", self, 'prop_enemy_type', self.prop_enemy_type, panel_x + 10, y); y += 22
+            
+            # Enemy Texture Preview for Defaults
+            if 0 <= self.prop_enemy_type < len(self.enemy_textures):
+                tex = self.enemy_textures[self.prop_enemy_type]
+                preview_size = 128
+                preview_rect = pygame.Rect(panel_x + (panel_width - preview_size)//2, y, preview_size, preview_size)
+                pygame.draw.rect(self.screen, Colors.BG_LIGHT, preview_rect)
+                
+                current_frame = tex.get_current_frame()
+                # Maintain aspect
+                w, h = current_frame.get_size()
+                aspect = w / h
+                if aspect > 1:
+                    draw_w = preview_size - 4
+                    draw_h = int(draw_w / aspect)
+                else:
+                    draw_h = preview_size - 4
+                    draw_w = int(draw_h * aspect)
+                    
+                scaled = pygame.transform.smoothscale(current_frame, (draw_w, draw_h))
+                dest = scaled.get_rect(center=preview_rect.center)
+                self.screen.blit(scaled, dest)
+                
+                name_text = self.font_small.render(tex.name, True, Colors.TEXT_DIM)
+                self.screen.blit(name_text, (preview_rect.x + 4, preview_rect.y + 4))
+                y += preview_size + 8
+                
+                # Prev / Next buttons for Enemy Type
+                btn_w = 60; btn_h = 24
+                prev_rect = pygame.Rect(panel_x + 30, y, btn_w, btn_h)
+                next_rect = pygame.Rect(panel_x + panel_width - 30 - btn_w, y, btn_w, btn_h)
+                for rect, label, delta in [(prev_rect, "Prev", -1), (next_rect, "Next", 1)]:
+                    color = Colors.BUTTON_ACTIVE if rect.collidepoint(pygame.mouse.get_pos()) else Colors.BUTTON
+                    pygame.draw.rect(self.screen, color, rect, border_radius=4)
+                    t_surf = self.font_small.render(label, True, Colors.TEXT)
+                    t_rect = t_surf.get_rect(center=rect.center)
+                    self.screen.blit(t_surf, t_rect)
+                    # We can reuse texture_nav_buttons logic if we handle it in handle_property_click
+                    # But we need to distinguish between wall texture and enemy type
+                    # Let's add a special handler or just hack it into texture_nav_buttons with a flag
+                    # For simplicity, let's just use a separate list or check tool type in handle_property_click
+                    self.texture_nav_buttons.append((rect, delta)) 
+                y += btn_h + 10
         else:
             self.draw_property_label("Current Settings", panel_x + 10, y); y += 25
             self.draw_property_value(f"Tool: {self.current_tool.name}", panel_x + 10, y); y += 20
@@ -2160,6 +2580,39 @@ class HammerEditor:
             self.draw_property_value(f"Wall Texture: {self.prop_wall_texture}", panel_x + 10, y); y += 20
             self.draw_property_value(f"Floor Height: {self.prop_sector_z1}", panel_x + 10, y); y += 20
             self.draw_property_value(f"Ceiling Height: {self.prop_sector_z2}", panel_x + 10, y)
+            
+        if self.selected_enemy is not None and self.selected_enemy < len(self.enemies):
+            enemy = self.enemies[self.selected_enemy]
+            self.draw_property_label("Enemy", panel_x + 10, y); y += 25
+            add_editable("Type (0-2)", enemy, 'enemy_type', enemy.enemy_type, panel_x + 10, y); y += 22
+            add_editable("Z (z)", enemy, 'z', enemy.z, panel_x + 10, y); y += 22
+            
+            # Enemy Texture Preview
+            if 0 <= enemy.enemy_type < len(self.enemy_textures):
+                tex = self.enemy_textures[enemy.enemy_type]
+                preview_size = 128
+                preview_rect = pygame.Rect(panel_x + (panel_width - preview_size)//2, y, preview_size, preview_size)
+                pygame.draw.rect(self.screen, Colors.BG_LIGHT, preview_rect)
+                
+                current_frame = tex.get_current_frame()
+                # Maintain aspect
+                w, h = current_frame.get_size()
+                aspect = w / h
+                if aspect > 1:
+                    draw_w = preview_size - 4
+                    draw_h = int(draw_w / aspect)
+                else:
+                    draw_h = preview_size - 4
+                    draw_w = int(draw_h * aspect)
+                    
+                scaled = pygame.transform.smoothscale(current_frame, (draw_w, draw_h))
+                dest = scaled.get_rect(center=preview_rect.center)
+                self.screen.blit(scaled, dest)
+                
+                name_text = self.font_small.render(tex.name, True, Colors.TEXT_DIM)
+                self.screen.blit(name_text, (preview_rect.x + 4, preview_rect.y + 4))
+                y += preview_size + 8
+
 
     def draw_property_label(self, text, x, y):
         label = self.font_medium.render(text, True, Colors.ACCENT_BRIGHT)
@@ -2181,6 +2634,8 @@ class HammerEditor:
         status_text = f"Tool: {self.current_tool.name}  |  "
         status_text += f"Sectors: {len(self.sectors)}  |  "
         status_text += f"Walls: {len(self.walls)}  |  "
+        status_text += f"Enemies: {len(self.enemies)}  |  "
+
         
         if self.active_viewport:
             mouse_pos = pygame.mouse.get_pos()

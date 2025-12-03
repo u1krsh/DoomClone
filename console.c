@@ -1,7 +1,9 @@
+#define _CRT_SECURE_NO_WARNINGS
 #include "console.h"
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdlib.h>
 
 // Global console instance
 Console console;
@@ -81,14 +83,14 @@ void consoleBackspace() {
 void consolePrint(const char* message) {
     if (console.messageCount < CONSOLE_MESSAGE_LINES) {
         // Add new message
-        strcpy_s(console.messages[console.messageCount], MAX_CONSOLE_INPUT, message);
+        strncpy(console.messages[console.messageCount], message, MAX_CONSOLE_INPUT);
         console.messageCount++;
     } else {
         // Shift messages up and add new one at bottom
         for (int i = 0; i < CONSOLE_MESSAGE_LINES - 1; i++) {
-            strcpy_s(console.messages[i], MAX_CONSOLE_INPUT, console.messages[i + 1]);
+            strncpy(console.messages[i], console.messages[i + 1], MAX_CONSOLE_INPUT);
         }
-        strcpy_s(console.messages[CONSOLE_MESSAGE_LINES - 1], MAX_CONSOLE_INPUT, message);
+        strncpy(console.messages[CONSOLE_MESSAGE_LINES - 1], message, MAX_CONSOLE_INPUT);
     }
 }
 
@@ -123,19 +125,19 @@ void consoleExecuteCommand() {
     
     // Add to history
     if (console.historyCount < CONSOLE_HISTORY_SIZE) {
-        strcpy_s(console.history[console.historyCount], MAX_CONSOLE_INPUT, console.input);
+        strncpy(console.history[console.historyCount], console.input, MAX_CONSOLE_INPUT);
         console.historyCount++;
     } else {
         // Shift history up and add new command at end
         for (int i = 0; i < CONSOLE_HISTORY_SIZE - 1; i++) {
-            strcpy_s(console.history[i], MAX_CONSOLE_INPUT, console.history[i + 1]);
+            strncpy(console.history[i], console.history[i + 1], MAX_CONSOLE_INPUT);
         }
-        strcpy_s(console.history[CONSOLE_HISTORY_SIZE - 1], MAX_CONSOLE_INPUT, console.input);
+        strncpy(console.history[CONSOLE_HISTORY_SIZE - 1], console.input, MAX_CONSOLE_INPUT);
     }
     
     // Process command
     char command[MAX_CONSOLE_INPUT];
-    strcpy_s(command, MAX_CONSOLE_INPUT, console.input);
+    strncpy(command, console.input, MAX_CONSOLE_INPUT);
     trim(command);
     toLowerCase(command);
     
