@@ -176,6 +176,7 @@ void consoleExecuteCommand() {
         consolePrint("  help - Show this help");
         consolePrint("  clear - Clear console");
         consolePrint("  text_edit - Launch texture editor");
+        consolePrint("  map_edit - Launch map editor");
     }
     else if (strcmp(command, "clear") == 0) {
         // Clear all messages
@@ -192,6 +193,15 @@ void consoleExecuteCommand() {
         system("start python tools\\texture_editor_pro.py");
         #else
         system("python tools/texture_editor_pro.py &");
+        #endif
+    }
+    else if (strcmp(command, "map_edit") == 0 || strcmp(command, "mapedit") == 0) {
+        consolePrint("Launching Map Editor...");
+        #ifdef _WIN32
+        // Launch the Python map editor
+        system("start python tools\\oracular_editor.py");
+        #else
+        system("python tools/oracular_editor.py &");
         #endif
     }
     else if (strlen(command) > 0) {

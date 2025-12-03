@@ -19,18 +19,21 @@ class ModernTextureEditor:
         self.root.geometry("1400x900")
         self.root.configure(bg='#1e1e1e')
         
-        # Set modern theme colors
+        # Set modern theme colors (Oracular Style)
         self.colors = {
-            'bg_dark': '#1e1e1e',
-            'bg_medium': '#2d2d30',
-            'bg_light': '#3e3e42',
-            'accent': '#007acc',
-            'accent_hover': '#1e8ad6',
-            'text': '#cccccc',
-            'text_bright': '#ffffff',
+            'bg_dark': '#19191c',      # Colors.BG_DARK
+            'bg_medium': '#2d2d30',    # Colors.BG_MEDIUM
+            'bg_light': '#3f3f46',     # Colors.BG_LIGHT
+            'accent': '#007acc',       # Colors.ACCENT
+            'accent_hover': '#1c97ea', # Colors.BUTTON_HOVER
+            'text': '#dcdce1',         # Colors.TEXT
+            'text_bright': '#ffffff',  # Colors.VERTEX
             'success': '#4ec9b0',
             'warning': '#ce9178',
-            'error': '#f48771'
+            'error': '#f48771',
+            'panel_bg': '#252528',     # Colors.PANEL_BG
+            'grid_dark': '#232326',    # Colors.GRID_DARK
+            'grid_light': '#37373a'    # Colors.GRID_LIGHT
         }
         
         # Data
@@ -65,6 +68,7 @@ class ModernTextureEditor:
         ]
         
         self.setup_ui()
+        self.bind_shortcuts()
         self.new_texture(64, 64)
         
     def setup_ui(self):
@@ -87,10 +91,10 @@ class ModernTextureEditor:
         btn_frame = tk.Frame(top_bar, bg=self.colors['bg_dark'])
         btn_frame.pack(side=tk.RIGHT, padx=20)
         
-        self.create_top_button(btn_frame, "Open", self.load_image, "Load PNG/JPG/BMP")
-        self.create_top_button(btn_frame, "Save", self.save_texture, "Save project")
+        self.create_top_button(btn_frame, "Open", self.load_image, "Load PNG/JPG/BMP (Ctrl+O)")
+        self.create_top_button(btn_frame, "Save", self.save_texture, "Save project (Ctrl+S)")
         self.create_top_button(btn_frame, "Export", self.export_c_header, "Export to C header")
-        self.create_top_button(btn_frame, "New", lambda: self.new_texture(64, 64), "New texture")
+        self.create_top_button(btn_frame, "New", lambda: self.new_texture(64, 64), "New texture (Ctrl+N)")
         
         # === MAIN CONTAINER ===
         main_container = tk.Frame(self.root, bg=self.colors['bg_dark'])
@@ -122,6 +126,29 @@ class ModernTextureEditor:
         bottom_bar.pack_propagate(False)
         
         self.setup_timeline(bottom_bar)
+
+        # === STATUS BAR ===
+        self.status_var = tk.StringVar()
+        self.status_var.set("Ready")
+        status_bar = tk.Label(self.root, textvariable=self.status_var,
+                              bg=self.colors['bg_dark'], fg=self.colors['text'],
+                              font=('Segoe UI', 9), anchor=tk.W, padx=10)
+        status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+        
+    def bind_shortcuts(self):
+        """Bind keyboard shortcuts"""
+        self.root.bind('<Control-n>', lambda e: self.new_texture(64, 64))
+        self.root.bind('<Control-o>', lambda e: self.load_image())
+        self.root.bind('<Control-s>', lambda e: self.save_texture())
+        
+        # Tools
+        self.root.bind('p', lambda e: self.set_tool("pencil"))
+        self.root.bind('e', lambda e: self.set_tool("eraser"))
+        self.root.bind('f', lambda e: self.set_tool("fill"))
+        self.root.bind('k', lambda e: self.set_tool("picker"))
+        self.root.bind('l', lambda e: self.set_tool("line"))
+        self.root.bind('r', lambda e: self.set_tool("rect"))
+        self.root.bind('c', lambda e: self.set_tool("circle"))
         
     def create_top_button(self, parent, text, command, tooltip):
         """Create a modern flat button"""
@@ -149,13 +176,13 @@ class ModernTextureEditor:
         tools_frame.pack(fill=tk.X, padx=10)
         
         tools = [
-            ("Pencil", "pencil"),
-            ("Eraser", "eraser"),
-            ("Fill", "fill"),
-            ("Picker", "picker"),
-            ("Line", "line"),
-            ("Rectangle", "rect"),
-            ("Circle", "circle")
+            ("Pencil (P)", "pencil"),
+            ("Eraser (E)", "eraser"),
+            ("Fill (F)", "fill"),
+            ("Picker (K)", "picker"),
+            ("Line (L)", "line"),
+            ("Rectangle (R)", "rect"),
+            ("Circle (C)", "circle")
         ]
         
         self.tool_buttons = {}
@@ -278,7 +305,37 @@ class ModernTextureEditor:
         self.canvas.bind('<Button-1>', self.on_canvas_click)
         self.canvas.bind('<B1-Motion>', self.on_canvas_drag)
         self.canvas.bind('<ButtonRelease-1>', self.on_canvas_release)
+        self.canvas.bind('<Motion>', self.on_canvas_motion)
         
+        # Zoom with mouse wheel
+        self.canvas.bind('<MouseWheel>', self.on_mouse_wheel)  # Windows
+        self.canvas.bind('<Button-4>', lambda e: self.zoom_in())  # Linux scroll up
+        self.canvas.bind('<Button-5>', lambda e: self.zoom_out())  # Linux scroll down
+        
+    def on_mouse_wheel(self, event):
+        """Handle mouse wheel zoom"""
+        if event.delta > 0:
+            self.zoom_in()
+        else:
+            self.zoom_out()
+            
+    def on_canvas_motion(self, event):
+        """Handle mouse motion on canvas"""
+        px, py = self.canvas_to_pixel(event.x, event.y)
+        self.update_status(px, py)
+        
+    def update_status(self, x=None, y=None):
+        """Update status bar"""
+        status = f"Tool: {self.tool.title()} | Zoom: {self.zoom}x"
+        if x is not None and y is not None:
+            if self.frames:
+                img = self.frames[self.current_frame]['image']
+                if 0 <= x < img.width and 0 <= y < img.height:
+                    status += f" | Pos: {x}, {y}"
+                else:
+                    status += " | Pos: -"
+        self.status_var.set(status)
+
     def setup_properties_panel(self, parent):
         """Setup properties and animation controls"""
         
@@ -324,13 +381,23 @@ class ModernTextureEditor:
                                        relief=tk.FLAT, insertbackground=self.colors['text'])
         self.duration_entry.pack(fill=tk.X)
         self.duration_entry.insert(0, "100")
+        self.duration_entry.bind('<KeyRelease>', self.update_duration)
         
         # Clear canvas button
         tk.Button(parent, text="Clear Canvas", command=self.clear_canvas,
-                 bg=self.colors['error'], fg=self.colors['text_bright'],
-                 font=('Segoe UI', 10, 'bold'), relief=tk.FLAT,
-                 padx=10, pady=10, cursor='hand2').pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=10)
-        
+                  bg=self.colors['error'], fg=self.colors['text_bright'],
+                  font=('Segoe UI', 10, 'bold'), relief=tk.FLAT,
+                  padx=10, pady=10, cursor='hand2').pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=10)
+
+    def update_duration(self, event=None):
+        """Update frame duration from entry"""
+        try:
+            duration = int(self.duration_entry.get())
+            if duration > 0:
+                self.frames[self.current_frame]['duration'] = duration
+        except ValueError:
+            pass
+
     def create_property_button(self, parent, text, command):
         """Create a property panel button"""
         return tk.Button(parent, text=text, command=command,
@@ -360,11 +427,38 @@ class ModernTextureEditor:
         self.tool = tool
         
         # Update button colors
-        for t, btn in self.tool_buttons.items():
-            if t == tool:
-                btn.config(bg=self.colors['accent'], fg=self.colors['text_bright'])
-            else:
-                btn.config(bg=self.colors['bg_light'], fg=self.colors['text'])
+        if hasattr(self, 'tool_buttons'):
+            for t, btn in self.tool_buttons.items():
+                if t == tool:
+                    btn.config(bg=self.colors['accent'], fg=self.colors['text_bright'])
+                else:
+                    btn.config(bg=self.colors['bg_light'], fg=self.colors['text'])
+        
+        # Update cursor
+        if hasattr(self, 'canvas'):
+            if tool in ["pencil", "eraser", "line", "rect", "circle"]:
+                self.canvas.config(cursor="tcross")
+            elif tool == "picker":
+                self.canvas.config(cursor="hand2")
+            elif tool == "fill":
+                self.canvas.config(cursor="crosshair")
+            
+        self.update_status()
+
+    def update_status(self, x=None, y=None):
+        """Update status bar"""
+        if not hasattr(self, 'status_var'):
+            return
+            
+        status = f"Tool: {self.tool.title()} | Zoom: {self.zoom}x"
+        if x is not None and y is not None:
+            if self.frames:
+                img = self.frames[self.current_frame]['image']
+                if 0 <= x < img.width and 0 <= y < img.height:
+                    status += f" | Pos: {x}, {y}"
+                else:
+                    status += " | Pos: -"
+        self.status_var.set(status)
                 
     def pick_color(self):
         """Open color picker"""
@@ -386,6 +480,7 @@ class ModernTextureEditor:
             self.zoom += 1
             self.zoom_label.config(text=f"{self.zoom}x")
             self.draw_canvas()
+            self.update_status()
             
     def zoom_out(self):
         """Zoom out"""
@@ -393,6 +488,7 @@ class ModernTextureEditor:
             self.zoom -= 1
             self.zoom_label.config(text=f"{self.zoom}x")
             self.draw_canvas()
+            self.update_status()
             
     def toggle_grid(self):
         """Toggle grid display"""
@@ -728,6 +824,10 @@ class ModernTextureEditor:
             info_text = f"Size: {img.width}x{img.height}\nFrame: {self.current_frame + 1}/{len(self.frames)}"
             self.info_label.config(text=info_text)
             
+            # Update duration entry
+            self.duration_entry.delete(0, tk.END)
+            self.duration_entry.insert(0, str(self.frames[self.current_frame]['duration']))
+            
     def draw_canvas(self):
         """Draw the current frame on canvas"""
         if not self.frames:
@@ -895,7 +995,13 @@ class ModernTextureEditor:
         img = self.frames[self.current_frame]['image']
         draw = ImageDraw.Draw(img)
         
-        draw.rectangle([x0, y0, x1, y1], fill=self.current_color)
+        # Ensure coordinates are top-left to bottom-right
+        left = min(x0, x1)
+        top = min(y0, y1)
+        right = max(x0, x1)
+        bottom = max(y0, y1)
+        
+        draw.rectangle([left, top, right, bottom], fill=self.current_color)
         self.draw_canvas()
         
     def draw_circle(self, x0, y0, x1, y1):
@@ -904,8 +1010,10 @@ class ModernTextureEditor:
         draw = ImageDraw.Draw(img)
         
         import math
+        # Calculate radius based on distance
         radius = int(math.sqrt((x1 - x0) ** 2 + (y1 - y0) ** 2))
         
+        # Draw circle centered at x0, y0
         draw.ellipse([x0 - radius, y0 - radius,
                      x0 + radius, y0 + radius], fill=self.current_color)
         self.draw_canvas()
@@ -928,3 +1036,8 @@ class ModernTextureEditor:
             self.current_color = img.getpixel((x, y))
             color_hex = '#%02x%02x%02x' % self.current_color
             self.color_display.config(bg=color_hex)
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = ModernTextureEditor(root)
+    root.mainloop()
