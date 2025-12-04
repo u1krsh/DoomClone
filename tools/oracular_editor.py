@@ -20,7 +20,18 @@ FPS = 60
 # Default level file path
 DEFAULT_LEVEL_PATH = r"D:\PROGRAM\VSPRO\DoomClone\level.h"
 
-TEXTURE_DIR = "textures"  # ADDED: directory containing texture .h files
+# FIXED: Resolve paths relative to the script/executable location
+def get_base_path():
+    """Get the base path for resources, works with PyInstaller and normal Python"""
+    if getattr(sys, 'frozen', False):
+        # Running as compiled executable (PyInstaller)
+        return os.path.dirname(sys.executable)
+    else:
+        # Running as script
+        return os.path.dirname(os.path.abspath(__file__))
+
+BASE_PATH = get_base_path()
+TEXTURE_DIR = os.path.join(BASE_PATH, "textures")  # FIXED: Use absolute path based on executable location
 
 # Colors (Dark Theme - Oracular Style)
 class Colors:
@@ -178,7 +189,7 @@ class OracularEditor:
         
         # Load Tool Icons
         self.tool_icons = {}
-        icon_dir = os.path.join("tools", "icons")
+        icon_dir = os.path.join(BASE_PATH, "icons")
         for tool, filename in [
             (Tool.SELECT, "select.png"),
             (Tool.CREATE_SECTOR, "sector.png"),
@@ -201,14 +212,14 @@ class OracularEditor:
         self.logo_img = None
         self.logo_text_img = None
         try:
-            logo_path = os.path.join(os.path.dirname(__file__), "oracular_logo.png")
+            logo_path = os.path.join(BASE_PATH, "oracular_logo.png")
             if os.path.exists(logo_path):
                 self.logo_img = pygame.image.load(logo_path).convert_alpha()
                 # Auto-remove background (assume top-left pixel is bg)
                 bg_color = self.logo_img.get_at((0, 0))
                 self.logo_img.set_colorkey(bg_color)
             
-            text_path = os.path.join(os.path.dirname(__file__), "oracular_text.png")
+            text_path = os.path.join(BASE_PATH, "oracular_text.png")
             if os.path.exists(text_path):
                 self.logo_text_img = pygame.image.load(text_path).convert_alpha()
                 # Auto-remove background for text too

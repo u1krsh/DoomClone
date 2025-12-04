@@ -166,8 +166,10 @@
     <ClInclude Include="textures\WALL58.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="build_package.bat" />
     <None Include="DoomClone.sln" />
-    <None Include="tools\hammer_editor.py" />
+    <None Include="tools\oracular_editor.py" />
+    <None Include="tools\sau_builder.py" />
     <None Include="tools\texture_editor_pro.py" />
   </ItemGroup>
   <ItemGroup>
@@ -177,9 +179,6 @@
     <ClCompile Include="DoomTest.c" />
     <ClCompile Include="fps_counter.c" />
     <ClCompile Include="screen_melt.c" />
-  </ItemGroup>
-  <ItemGroup>
-    <ResourceCompile Include="DoomClone1.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

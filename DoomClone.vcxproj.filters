@@ -126,7 +126,11 @@
   <ItemGroup>
     <None Include="DoomClone.sln" />
     <None Include="tools\texture_editor_pro.py" />
-    <None Include="tools\hammer_editor.py" />
+    <None Include="tools\oracular_editor.py" />
+    <None Include="build_package.bat">
+      <Filter>Source Files</Filter>
+    </None>
+    <None Include="tools\sau_builder.py" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="console_font.c">
@@ -147,8 +151,5 @@
     <ClCompile Include="automap.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <ResourceCompile Include="DoomClone1.rc" />
   </ItemGroup>
 </Project>
