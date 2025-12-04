@@ -1,43 +1,51 @@
-
-x64/
-DoomClone/
+# Visual Studio 2022
 .vs/
-.gitattributes
-DoomClone/x64/Debug/DoomClone.tlog/DoomClone.write.1u.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link-cvtres.read.1.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link-cvtres.write.1.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link-rc.read.1.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link-rc.write.1.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link.30660-cvtres.read.1.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link.30660-cvtres.write.1.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link.30660-rc.read.1.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link.30660-rc.write.1.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link.30660.read.1.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link.30660.read.2.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link.30660.read.3.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link.30660.read.4.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link.30660.write.1.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link.read.2.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link.read.3.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link.read.4.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link.read.5.tlog
-DoomClone/x64/Debug/DoomClone.tlog/unsuccessfulbuild
-DoomClone/x64/Debug/DoomClone.tlog/DoomClone.write.1u.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link-cvtres.read.1.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link-cvtres.write.1.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link-rc.read.1.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link-rc.write.1.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link.30660-cvtres.read.1.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link.30660-cvtres.write.1.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link.30660-rc.read.1.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link.30660-rc.write.1.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link.30660.read.1.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link.30660.read.2.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link.30660.read.3.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link.30660.read.4.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link.30660.write.1.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link.read.2.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link.read.3.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link.read.4.tlog
-DoomClone/x64/Debug/DoomClone.tlog/link.read.5.tlog
-DoomClone/x64/Debug/DoomClone.tlog/unsuccessfulbuild
+out/
+build/
+x64/
+Debug/
+Release/
+*.user
+*.suo
+*.opensdf
+*.sdf
+*.cache
+*.ipch
+*.ap_
+*.aps
+*.ncb
+*.tlog
+*.log
+*.obj
+*.pdb
+*.ilk
+*.exe
+*.dll
+*.lib
+*.exp
+!DoomClone.exe # Keep the main executable if desired, but usually ignored
+!glut32.dll # Keep external dependencies if they are in the root
+
+# VS Code
+.vscode/
+
+# System
+Thumbs.db
+Desktop.ini
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+
+# Unused/Temporary Files
+sex.bmp
+output.png
+run_both.bat
+
+# Python
+__pycache__/
+*.pyc
+
+# Tools artifacts
+tools/604.png

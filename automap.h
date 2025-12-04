@@ -14,13 +14,22 @@ typedef struct {
 typedef struct {
 	int x1, y1;
 	int x2, y2;
+	int c;
 	int wt, u, v;
 	int shade;
 } WallData;
 
+#define AUTOMAP_SW 320
+
 typedef struct {
 	int ws, we;
 	int z1, z2;
+	int x, y;
+	int d;
+	int c1, c2;
+	int surf[AUTOMAP_SW];
+	int surface;
+	int ss, st;
 } SectorData;
 
 typedef struct {

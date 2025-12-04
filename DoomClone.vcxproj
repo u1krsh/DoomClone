@@ -131,6 +131,7 @@
     <ClInclude Include="console.h" />
     <ClInclude Include="console_font.h" />
     <ClInclude Include="enemy.h" />
+    <ClInclude Include="floors.h" />
     <ClInclude Include="fps_counter.h" />
     <ClInclude Include="level.h" />
     <ClInclude Include="resource.h" />
