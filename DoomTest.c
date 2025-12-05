@@ -39,7 +39,7 @@ int gamePaused = 0;
 int numText = NUM_TEXTURES - 1;  // Use macro from all_textures.h (max texture index)
 
 int numSect = 0;                          //number of sectors
-int numWall = 0;                          //number of walls
+int numWall = 0;                          //number of appy s
 
 // Collision detection constants
 #define PLAYER_RADIUS 8  // Player collision radius
@@ -563,7 +563,11 @@ void draw3D() {
 
 				drawWall(wx[0], wx[1], wy[0], wy[1], wy[2], wy[3], s, w, frontBack);
 			}
-			S[s].d /= (S[s].we - S[s].ws);
+			// Prevent division by zero for sectors with no walls
+			int wallCount = S[s].we - S[s].ws;
+			if (wallCount > 0) {
+				S[s].d /= wallCount;
+			}
 		}
 	}
 	

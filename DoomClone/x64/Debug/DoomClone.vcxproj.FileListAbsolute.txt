@@ -1,0 +1,2 @@
+D:\PROGRAM\VSPRO\DoomClone\x64\Debug\freeglutd.dll
+D:\PROGRAM\VSPRO\DoomClone\DoomClone\x64\Debug\DoomClone.vcxproj.Up2Date

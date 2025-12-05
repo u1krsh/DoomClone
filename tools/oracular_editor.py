@@ -19,7 +19,6 @@ FPS = 60
 
 # Default level file path
 DEFAULT_LEVEL_PATH = r"D:\PROGRAM\VSPRO\DoomClone\level.h"
-
 # FIXED: Resolve paths relative to the script/executable location
 def get_base_path():
     """Get the base path for resources, works with PyInstaller and normal Python"""
@@ -31,7 +30,7 @@ def get_base_path():
         return os.path.dirname(os.path.abspath(__file__))
 
 BASE_PATH = get_base_path()
-TEXTURE_DIR = os.path.join(BASE_PATH, "textures")  # FIXED: Use absolute path based on executable location
+TEXTURE_DIR = os.path.join(BASE_PATH, "..", "textures")
 
 # Colors (Dark Theme - Oracular Style)
 class Colors:
