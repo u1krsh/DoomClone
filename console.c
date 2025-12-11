@@ -14,6 +14,17 @@ int noclip = 0;
 
 // Enemy system external reference
 extern int enemiesEnabled;
+extern int playerHealth;
+extern int playerMaxHealth;
+extern int playerArmor;
+extern int playerMaxArmor;
+extern int playerDead;
+extern int enemiesKilled;
+extern int totalEnemiesSpawned;
+
+// Forward declarations for external functions
+extern void healPlayer(int amount);
+extern void addArmor(int amount);
 
 void initConsole(int screenWidth, int screenHeight) {
     console.active = 0;
@@ -120,6 +131,32 @@ void toLowerCase(char* str) {
     }
 }
 
+// Parse command and argument
+void parseCommand(const char* input, char* cmd, char* arg) {
+    cmd[0] = '\0';
+    arg[0] = '\0';
+    
+    // Skip leading whitespace
+    while (*input && isspace(*input)) input++;
+    
+    // Copy command (until space or end)
+    int i = 0;
+    while (*input && !isspace(*input) && i < MAX_CONSOLE_INPUT - 1) {
+        cmd[i++] = *input++;
+    }
+    cmd[i] = '\0';
+    
+    // Skip whitespace between command and argument
+    while (*input && isspace(*input)) input++;
+    
+    // Copy argument (rest of string)
+    i = 0;
+    while (*input && i < MAX_CONSOLE_INPUT - 1) {
+        arg[i++] = *input++;
+    }
+    arg[i] = '\0';
+}
+
 void consoleExecuteCommand() {
     if (console.inputPos == 0) return;
     
@@ -137,15 +174,24 @@ void consoleExecuteCommand() {
     
     // Process command
     char command[MAX_CONSOLE_INPUT];
-    strncpy(command, console.input, MAX_CONSOLE_INPUT);
-    trim(command);
+    char argument[MAX_CONSOLE_INPUT];
+    
+    // Make a copy for processing
+    char inputCopy[MAX_CONSOLE_INPUT];
+    strncpy(inputCopy, console.input, MAX_CONSOLE_INPUT);
+    trim(inputCopy);
+    
+    // Parse command and argument
+    parseCommand(inputCopy, command, argument);
     toLowerCase(command);
     
+    char response[MAX_CONSOLE_INPUT];
+    
     // Execute command
-    if (strcmp(command, "godmode") == 0) {
+    if (strcmp(command, "godmode") == 0 || strcmp(command, "god") == 0) {
         godMode = !godMode;
         if (godMode) {
-            consolePrint("God mode ENABLED");
+            consolePrint("God mode ENABLED - You are invincible!");
         } else {
             consolePrint("God mode DISABLED");
         }
@@ -153,13 +199,14 @@ void consoleExecuteCommand() {
     else if (strcmp(command, "noclip") == 0) {
         noclip = !noclip;
         if (noclip) {
-            consolePrint("noclip ENABLED");
+            consolePrint("Noclip ENABLED - Walk through walls");
         }   
         else {
-            consolePrint("noclip DISABLED");
+            consolePrint("Noclip DISABLED");
         }
     }
-    else if (strcmp(command, "noenemies") == 0 || strcmp(command, "nomonsters") == 0) {
+    else if (strcmp(command, "noenemies") == 0 || strcmp(command, "nomonsters") == 0 || 
+             strcmp(command, "notarget") == 0) {
         enemiesEnabled = !enemiesEnabled;
         if (!enemiesEnabled) {
             consolePrint("Enemies DISABLED");
@@ -168,12 +215,126 @@ void consoleExecuteCommand() {
             consolePrint("Enemies ENABLED");
         }
     }
+    else if (strcmp(command, "health") == 0) {
+        if (strlen(argument) > 0) {
+            int amount = atoi(argument);
+            if (amount > 0) {
+                playerHealth = amount;
+                if (playerHealth > 200) playerHealth = 200;
+                playerMaxHealth = playerHealth > 100 ? playerHealth : 100;
+                playerDead = 0;
+                snprintf(response, sizeof(response), "Health set to %d", playerHealth);
+                consolePrint(response);
+            } else {
+                consolePrint("Usage: health <amount> (1-200)");
+            }
+        } else {
+            snprintf(response, sizeof(response), "Current health: %d/%d", playerHealth, playerMaxHealth);
+            consolePrint(response);
+        }
+    }
+    else if (strcmp(command, "armor") == 0) {
+        if (strlen(argument) > 0) {
+            int amount = atoi(argument);
+            if (amount >= 0) {
+                playerArmor = amount;
+                if (playerArmor > 200) playerArmor = 200;
+                playerMaxArmor = playerArmor > 100 ? playerArmor : 100;
+                snprintf(response, sizeof(response), "Armor set to %d", playerArmor);
+                consolePrint(response);
+            } else {
+                consolePrint("Usage: armor <amount> (0-200)");
+            }
+        } else {
+            snprintf(response, sizeof(response), "Current armor: %d/%d", playerArmor, playerMaxArmor);
+            consolePrint(response);
+        }
+    }
+    else if (strcmp(command, "give") == 0) {
+        toLowerCase(argument);
+        if (strcmp(argument, "health") == 0 || strcmp(argument, "h") == 0) {
+            healPlayer(100);
+            consolePrint("Gave 100 health");
+        }
+        else if (strcmp(argument, "armor") == 0 || strcmp(argument, "a") == 0) {
+            addArmor(100);
+            consolePrint("Gave 100 armor");
+        }
+        else if (strcmp(argument, "weapons") == 0 || strcmp(argument, "w") == 0) {
+            extern void giveAllWeapons(void);
+            giveAllWeapons();
+            consolePrint("Gave all weapons and ammo");
+        }
+        else if (strcmp(argument, "ammo") == 0) {
+            extern void giveAllWeapons(void);
+            giveAllWeapons();
+            consolePrint("Max ammo for all weapons");
+        }
+        else if (strcmp(argument, "all") == 0) {
+            extern void giveAllWeapons(void);
+            playerHealth = 200;
+            playerMaxHealth = 200;
+            playerArmor = 200;
+            playerMaxArmor = 200;
+            playerDead = 0;
+            giveAllWeapons();
+            consolePrint("Gave all items - 200 health, 200 armor, all weapons");
+        }
+        else {
+            consolePrint("Usage: give <health|armor|weapons|ammo|all>");
+        }
+    }
+    else if (strcmp(command, "kill") == 0) {
+        toLowerCase(argument);
+        if (strcmp(argument, "enemies") == 0 || strcmp(argument, "all") == 0) {
+            // Kill all enemies using extern function
+            extern void killAllEnemies(int currentTime);
+            killAllEnemies(0);
+            consolePrint("All enemies killed!");
+        }
+        else if (strcmp(argument, "me") == 0 || strcmp(argument, "self") == 0) {
+            if (!godMode) {
+                playerHealth = 0;
+                playerDead = 1;
+                consolePrint("You killed yourself");
+            } else {
+                consolePrint("Cannot die in god mode");
+            }
+        }
+        else {
+            consolePrint("Usage: kill <enemies|me>");
+        }
+    }
+    else if (strcmp(command, "stats") == 0) {
+        snprintf(response, sizeof(response), "Health: %d/%d  Armor: %d/%d", 
+                 playerHealth, playerMaxHealth, playerArmor, playerMaxArmor);
+        consolePrint(response);
+        snprintf(response, sizeof(response), "Enemies killed: %d/%d", 
+                 enemiesKilled, totalEnemiesSpawned);
+        consolePrint(response);
+    }
+    else if (strcmp(command, "resurrect") == 0 || strcmp(command, "respawn") == 0) {
+        if (playerDead) {
+            playerHealth = 100;
+            playerMaxHealth = 100;
+            playerDead = 0;
+            consolePrint("You have been resurrected");
+        } else {
+            consolePrint("You are not dead");
+        }
+    }
     else if (strcmp(command, "help") == 0) {
-        consolePrint("Available commands:");
-        consolePrint("  godmode - Toggle god mode");
+        consolePrint("=== CHEAT COMMANDS ===");
+        consolePrint("  god/godmode - Toggle invincibility");
         consolePrint("  noclip - Walk through walls");
-        consolePrint("  noenemies - Toggle enemies");
-        consolePrint("  help - Show this help");
+        consolePrint("  notarget - Toggle enemy AI");
+        consolePrint("  give <health|armor|all> - Get items");
+        consolePrint("  health [amount] - Set/view health");
+        consolePrint("  armor [amount] - Set/view armor");
+        consolePrint("  kill <enemies|me> - Kill targets");
+        consolePrint("  resurrect - Revive after death");
+        consolePrint("  stats - View game statistics");
+        consolePrint("=== UTILITY COMMANDS ===");
         consolePrint("  clear - Clear console");
         consolePrint("  text_edit - Launch texture editor");
         consolePrint("  map_edit - Launch map editor");
@@ -205,7 +366,9 @@ void consoleExecuteCommand() {
         #endif
     }
     else if (strlen(command) > 0) {
-        consolePrint("That is not a command, bitch");
+        snprintf(response, sizeof(response), "Unknown command: %s", command);
+        consolePrint(response);
+        consolePrint("Type 'help' for available commands");
     }
     
     // Clear input

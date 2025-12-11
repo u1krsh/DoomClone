@@ -122,6 +122,12 @@
     <ClInclude Include="floors.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="hud.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="weapon.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="DoomClone.sln" />
@@ -149,6 +155,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="automap.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="hud.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

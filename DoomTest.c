@@ -33,13 +33,19 @@
 // Enemy system
 #include "enemy.h"
 
+// HUD system
+#include "hud.h"
+
+// Weapon system
+#include "weapon.h"
+
 // Global pause state
 int gamePaused = 0;
 
 int numText = NUM_TEXTURES - 1;  // Use macro from all_textures.h (max texture index)
 
 int numSect = 0;                          //number of sectors
-int numWall = 0;                          //number of appy s
+int numWall = 0;                          //number of walls
 
 // Collision detection constants
 #define PLAYER_RADIUS 8  // Player collision radius
@@ -55,6 +61,7 @@ typedef struct
 	int w, s, a, d;           //move up, down, left, rigth
 	int sl, sr;             //strafe left, right 
 	int m;                 //move up, down, look up, down
+	int fire;              //fire weapon
 }keys;
 keys K;
 
@@ -108,6 +115,7 @@ void drawConsoleText();
 void drawWallDebugOverlay();
 void drawPauseMenu();
 int checkWallCollision(int newX, int newY);
+void toggleMouseLook();  // Add forward declaration for mouse look toggle
 
 void load()
 {
@@ -489,7 +497,7 @@ void draw3D() {
 			if (S[w].d < S[w + 1].d) {
 				sectors st = S[w];
 				S[w] = S[w + 1];
-			S[w + 1] = st;
+				S[w + 1] = st;
 			}
 		}
 	}
@@ -1012,59 +1020,97 @@ void display() {
 			// Normal game rendering
 			clearBackground();
 			
-			// Only update player movement and enemies if not paused
-			if (!gamePaused) {
-				movePl();
-				// Update enemy AI with current time for animation
-				updateEnemies(P.x, P.y, P.z, T.fr1);
+			// Check if player is dead
+			if (playerDead) {
+				// Still render the world but don't update
+				draw3D();
+				drawDeathScreen(pixel, SW, SH);
+				
+				// Draw console on top of everything
+				drawConsoleText();
 			}
-			
-			draw3D();
-			
-			// Update and draw automap (modular)
-			updateAutomap();
-			drawAutomap(pixel, SW, SH, (PlayerState*)&P, (WallData*)W, (SectorData*)S, numSect, (MathTable*)&M);
-			
-			// Update console animation
-			updateConsole();
-			
-			// Update and draw FPS counter (modular)
-			updateFPSCounter(T.fr1);
-			
-			// Draw debug overlay if enabled (includes FPS, crosshair, coordinates, hitboxes)
-			if (isFPSDisplayEnabled()) {
-				// Draw wall collision zones
-				drawWallDebugOverlay();
+			else {
+				// Only update player movement and enemies if not paused
+				if (!gamePaused) {
+					movePl();
+					// Update enemy AI with current time for animation
+					updateEnemies(P.x, P.y, P.z, T.fr1);
+					
+					// Handle weapon firing
+					if (K.fire) {
+						int targetEnemy = getEnemyInCrosshair(P.x, P.y, P.a, M.cos, M.sin);
+						fireWeapon(targetEnemy, T.fr1);
+					}
+					
+					// Update weapon state
+					int isMoving = (K.w || K.s || K.sl || K.sr);
+					updateWeapon(isMoving, T.fr1);
+				}
 				
-				// Draw player position info and crosshair
-				drawDebugOverlay(pixel, SW, SH, P.x, P.y, P.z, P.a, P.l);
+				draw3D();
 				
-				// Enemy debug overlay is now drawn inside draw3D() BEFORE sprites
-				// This ensures proper occlusion by enemy sprites
+				// Check if aiming at enemy for crosshair color
+				int targetEnemy = getEnemyInCrosshair(P.x, P.y, P.a, M.cos, M.sin);
 				
-				// OPTIMIZED: Draw player hitbox (fewer points, every 15 degrees instead of 8)
-				int playerScreenRadius = 15; // Visual representation of PLAYER_RADIUS
-				int centerX = SW / 2;
-				int centerY = SH / 2;
+				// Draw crosshair (changes color when targeting enemy)
+				if (!isFPSDisplayEnabled()) {
+					drawCrosshair(pixel, SW, SH, targetEnemy >= 0);
+				}
 				
-				// Draw player collision circle (cyan color) - optimized with fewer points
-				for (int angle = 0; angle < 360; angle += 15) {
-					int x = centerX + (int)(playerScreenRadius * M.cos[angle]);
-					int y = centerY + (int)(playerScreenRadius * M.sin[angle]);
-					if (x >= 0 && x < SW && y >= 0 && y < SH) {
-						pixel(x, y, 0, 255, 255); // Cyan for player hitbox
+				// Draw muzzle flash
+				drawMuzzleFlash(pixel, SW, SH, T.fr1);
+				
+				// Draw damage overlay (red flash when hit)
+				drawDamageOverlay(pixel, SW, SH, T.fr1);
+				
+				// Draw HUD (health, armor, etc.)
+				drawHUD(pixel, SW, SH);
+				
+				// Draw weapon HUD (ammo count)
+				drawWeaponHUD(pixel, SW, SH);
+				
+				// Update and draw automap (modular)
+				updateAutomap();
+				drawAutomap(pixel, SW, SH, (PlayerState*)&P, (WallData*)W, (SectorData*)S, numSect, (MathTable*)&M);
+				
+				// Update console animation
+				updateConsole();
+				
+				// Update and draw FPS counter (modular)
+				updateFPSCounter(T.fr1);
+				
+				// Draw debug overlay if enabled (includes FPS, crosshair, coordinates, hitboxes)
+				if (isFPSDisplayEnabled()) {
+					// Draw wall collision zones
+					drawWallDebugOverlay();
+					
+					// Draw player position info and crosshair
+					drawDebugOverlay(pixel, SW, SH, P.x, P.y, P.z, P.a, P.l);
+					
+					// OPTIMIZED: Draw player hitbox (fewer points, every 15 degrees instead of 8)
+					int playerScreenRadius = 15;
+					int centerX = SW / 2;
+					int centerY = SH / 2;
+					
+					// Draw player collision circle (cyan color)
+					for (int angle = 0; angle < 360; angle += 15) {
+						int x = centerX + (int)(playerScreenRadius * M.cos[angle]);
+						int y = centerY + (int)(playerScreenRadius * M.sin[angle]);
+						if (x >= 0 && x < SW && y >= 0 && y < SH) {
+							pixel(x, y, 0, 255, 255);
+						}
 					}
 				}
-			}
 
-			// Draw FPS text (old function still works for just FPS number)
-			drawFPSCounter(pixel, SH);
-			
-			// Draw pause menu if game is paused
-			drawPauseMenu();
-			
-			// Draw console on top of everything
-			drawConsoleText();
+				// Draw FPS text
+				drawFPSCounter(pixel, SH);
+				
+				// Draw pause menu if game is paused
+				drawPauseMenu();
+				
+				// Draw console on top of everything
+				drawConsoleText();
+			}
 			
 			// Update and draw screen melt effect on top of everything (modular)
 			updateScreenMelt();
@@ -1073,7 +1119,7 @@ void display() {
 		
 		T.fr2 = T.fr1;
 		glutSwapBuffers();
-		glutReshapeWindow(GSLW, GSLH); // stops from resizeing window
+		glutReshapeWindow(GSLW, GSLH);
 	}
 	T.fr1 = glutGet(GLUT_ELAPSED_TIME);
 	glutPostRedisplay();
@@ -1103,6 +1149,12 @@ void KeysDown(unsigned char key, int x, int y)
 		return;
 	}
 	
+	// Toggle mouse look with F key
+	if (key == 'f' && !console.active && !gamePaused) {
+		toggleMouseLook();
+		return;
+	}
+	
 	// If console is active, send input to console
 	if (console.active) {
 		consoleHandleKey(key);
@@ -1112,6 +1164,21 @@ void KeysDown(unsigned char key, int x, int y)
 	// Don't process game controls if paused
 	if (gamePaused) return;
 	
+	// If player is dead, Enter key restarts
+	if (playerDead) {
+		if (key == 13) {
+			// Reset player
+			playerHealth = 100;
+			playerMaxHealth = 100;
+			playerArmor = 0;
+			playerDead = 0;
+			initWeapons();
+			load();
+			startScreenMelt();
+		}
+		return;
+	}
+	
 	// Normal game controls
 	if (key == 'w') { K.w = 1; }
 	if (key == 's') { K.s = 1; }
@@ -1120,6 +1187,23 @@ void KeysDown(unsigned char key, int x, int y)
 	if (key == 'm') { K.m = 1; }
 	if (key == '.') { K.sr = 1; }
 	if (key == ',') { K.sl = 1; }
+	
+	// Fire weapon with space bar
+	if (key == ' ') { K.fire = 1; }
+	
+	// Weapon switching with number keys
+	if (key == '1') { selectWeapon(WEAPON_FIST); }
+	if (key == '2') { selectWeapon(WEAPON_PISTOL); }
+	if (key == '3') { selectWeapon(WEAPON_SHOTGUN); }
+	if (key == '4') { selectWeapon(WEAPON_CHAINGUN); }
+	
+	// Weapon switching with Q/E
+	if (key == 'q') { prevWeapon(); }
+	if (key == 'e') { nextWeapon(); }
+	
+	// Toggle HUD with H
+	if (key == 'h') { toggleHUD(); }
+	
 	if (key == 13) { 
 		load(); // Reload level
 		startScreenMelt(); // Start melt effect (modular)
@@ -1158,6 +1242,69 @@ void KeysUp(unsigned char key, int x, int y)
 	if (key == 'm') { K.m = 0; }
 	if (key == '.') { K.sr = 0; }
 	if (key == ',') { K.sl = 0; }
+	if (key == ' ') { K.fire = 0; }
+}
+
+// Mouse handling
+void mouseClick(int button, int state, int x, int y) {
+	if (console.active || gamePaused || playerDead) return;
+	
+	// Left mouse button for shooting
+	if (button == GLUT_LEFT_BUTTON) {
+		if (state == GLUT_DOWN) {
+			K.fire = 1;
+		} else {
+			K.fire = 0;
+		}
+	}
+	
+	// Scroll wheel for weapon switching
+	if (button == 3) { // Scroll up
+		nextWeapon();
+	}
+	if (button == 4) { // Scroll down
+		prevWeapon();
+	}
+}
+
+// Mouse motion for looking around
+int lastMouseX = -1;
+int mouseEnabled = 0;
+
+void mouseMotion(int x, int y) {
+	if (!mouseEnabled || console.active || gamePaused || playerDead) return;
+	
+	// Calculate center of window
+	int centerX = GSLW / 2;
+	int centerY = GSLH / 2;
+	
+	// Skip if mouse is at center (we just warped it there)
+	if (x == centerX && y == centerY) return;
+	
+	// Calculate mouse delta
+	int deltaX = x - centerX;
+	
+	// Apply mouse sensitivity (adjust as needed)
+	float sensitivity = 0.15f;
+	int angleChange = (int)(deltaX * sensitivity);
+	
+	// Update player angle
+	P.a += angleChange;
+	if (P.a < 0) P.a += 360;
+	if (P.a >= 360) P.a -= 360;
+	
+	// Warp mouse back to center
+	glutWarpPointer(centerX, centerY);
+}
+
+void toggleMouseLook() {
+	mouseEnabled = !mouseEnabled;
+	if (mouseEnabled) {
+		glutSetCursor(GLUT_CURSOR_NONE); // Hide cursor
+		glutWarpPointer(GSLW / 2, GSLH / 2);
+	} else {
+		glutSetCursor(GLUT_CURSOR_INHERIT); // Show cursor
+	}
 }
 
 void init() {
@@ -1173,6 +1320,10 @@ void init() {
 	// Initialize timing
 	T.fr1 = 0;
 	T.fr2 = 0;
+	
+	// Initialize keys
+	K.w = 0; K.s = 0; K.a = 0; K.d = 0;
+	K.sl = 0; K.sr = 0; K.m = 0; K.fire = 0;
 
 	// Initialize console with screen dimensions
 	initConsole(SW, SH);
@@ -1183,13 +1334,19 @@ void init() {
 	// Initialize automap (modular)
 	initAutomap();
 	
+	// Initialize HUD
+	initHUD();
+	
+	// Initialize weapon system
+	initWeapons();
+	
 	// Initialize enemy system
 	initEnemies();
 	
 	// Add different enemy types in the world for variety
-	addEnemyType(200, 200, 20, ENEMY_TYPE_BOSSA1);   // BOSSA1 enemy (yellow debug hitbox)
-	addEnemyType(400, 300, 20, ENEMY_TYPE_BOSSA2);   // BOSSA2 enemy (cyan debug hitbox)
-	addEnemyType(150, 350, 20, ENEMY_TYPE_BOSSA3);   // BOSSA3 enemy (magenta debug hitbox)
+	addEnemyType(200, 200, 20, ENEMY_TYPE_BOSSA1);   // BOSSA1 enemy
+	addEnemyType(400, 300, 20, ENEMY_TYPE_BOSSA2);   // BOSSA2 enemy
+	addEnemyType(150, 350, 20, ENEMY_TYPE_BOSSA3);   // BOSSA3 enemy
 	addEnemyType(300, 150, 20, ENEMY_TYPE_BOSSA1);   // Another BOSSA1
 	addEnemyType(250, 400, 20, ENEMY_TYPE_BOSSA2);   // Another BOSSA2
 
@@ -1246,14 +1403,17 @@ int main(int argc, char* argv[]) {
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
 	glutInitWindowPosition(SCRPOS_W, SCRPOS_H);
 	glutInitWindowSize(GSLW, GSLH);
-	glutCreateWindow("");
-	glPointSize(pixelScale); //pixel size
-	gluOrtho2D(0, GSLW, 0, GSLH); // origin
+	glutCreateWindow("Doom Clone");
+	glPointSize(pixelScale);
+	gluOrtho2D(0, GSLW, 0, GSLH);
 	init();
 	glutDisplayFunc(display);
 	glutKeyboardFunc(KeysDown);
 	glutKeyboardUpFunc(KeysUp);
-	glutSpecialFunc(specialKeys); // Register special keys handler
+	glutSpecialFunc(specialKeys);
+	glutMouseFunc(mouseClick);         // Add mouse click handler
+	glutPassiveMotionFunc(mouseMotion); // Add mouse motion handler
+	glutMotionFunc(mouseMotion);        // Also handle motion while button pressed
 	glutMainLoop();
 	return 0;
 }

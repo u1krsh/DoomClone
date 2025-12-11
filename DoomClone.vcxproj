@@ -133,6 +133,7 @@
     <ClInclude Include="enemy.h" />
     <ClInclude Include="floors.h" />
     <ClInclude Include="fps_counter.h" />
+    <ClInclude Include="hud.h" />
     <ClInclude Include="level.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="resource1.h" />
@@ -164,6 +165,7 @@
     <ClInclude Include="textures\WALL57_4.h" />
     <ClInclude Include="textures\WALL57_anim.h" />
     <ClInclude Include="textures\WALL58.h" />
+    <ClInclude Include="weapon.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="build_package.bat" />
@@ -178,6 +180,7 @@
     <ClCompile Include="console_font.c" />
     <ClCompile Include="DoomTest.c" />
     <ClCompile Include="fps_counter.c" />
+    <ClCompile Include="hud.c" />
     <ClCompile Include="screen_melt.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -1,0 +1,390 @@
+﻿	drawStringScaled(textX, textY, pauseText, 255, 0, 0, fontScale, pixel);
+	
+	// Draw "Press ESC to resume" below in smaller text
+	int helpScale = fontScale / 2;
+	if (helpScale < 1) helpScale = 1;
+	const char* helpText = "Press ESC to resume";
+	int helpLength = strlen(helpText);
+	int helpWidth = helpLength * 8 * helpScale;
+	int helpX = (SW - helpWidth) / 2;
+	int helpY = textY - (15 * fontScale);
+	
+	drawStringScaled(helpX, helpY, helpText, 200, 200, 200, helpScale, pixel);
+}
+
+// Draw wall collision zones for debug visualization (OPTIMIZED)
+void drawWallDebugOverlay() {
+	if (!isFPSDisplayEnabled()) return;
+	
+	int s, w;
+	float CS = M.cos[P.a];
+	float SN = M.sin[P.a];
+	
+	// Draw wall collision zones
+	for (s = 0; s < numSect; s++) {
+		for (w = S[s].ws; w < S[s].we; w++) {
+			// Transform wall endpoints to camera space
+			int x1 = W[w].x1 - P.x;
+			int y1 = W[w].y1 - P.y;
+			int x2 = W[w].x2 - P.x;
+			int y2 = W[w].y2 - P.y;
+			
+			// Rotate to camera space
+			float camX1 = x1 * CS - y1 * SN;
+			float camY1 = x1 * SN + y1 * CS;
+			float camX2 = x2 * CS - y2 * SN;
+			float camY2 = x2 * SN + y2 * CS;
+			
+			// Skip if both points are behind player
+			if (camY1 < 1.0f && camY2 < 1.0f) continue;
+			
+			// Calculate wall heights in camera space
+			int wz1_bottom = S[s].z1 - P.z + ((P.l * camY1) / 32.0);
+			int wz1_top = S[s].z2 - P.z + ((P.l * camY1) / 32.0);
+			int wz2_bottom = S[s].z1 - P.z + ((P.l * camY2) / 32.0);
+			int wz2_top = S[s].z2 - P.z + ((P.l * camY2) / 32.0);
+			
+			// Clip if needed
+			if (camY1 < 1.0f) {
+				float t = (1.0f - camY1) / (camY2 - camY1);
+				camX1 = camX1 + t * (camX2 - camX1);
+				camY1 = 1.0f;
+				wz1_bottom = wz1_bottom + t * (wz2_bottom - wz1_bottom);
+				wz1_top = wz1_top + t * (wz2_top - wz1_top);
+			}
+			if (camY2 < 1.0f) {
+				float t = (1.0f - camY2) / (camY1 - camY2);
+				camX2 = camX2 + t * (camX1 - camX2);
+				camY2 = 1.0f;
+				wz2_bottom = wz2_bottom + t * (wz1_bottom - wz2_bottom);
+				wz2_top = wz2_top + t * (wz1_top - wz2_top);
+			}
+			
+			// Project to screen
+			int sx1 = (int)(camX1 * 200.0f / camY1 + SW / 2);
+			int sy1_bottom = (int)(wz1_bottom * 200.0f / camY1 + SH / 2);
+			int sy1_top = (int)(wz1_top * 200.0f / camY1 + SH / 2);
+			
+			int sx2 = (int)(camX2 * 200.0f / camY2 + SW / 2);
+			int sy2_bottom = (int)(wz2_bottom * 200.0f / camY2 + SH / 2);
+			int sy2_top = (int)(wz2_top * 200.0f / camY2 + SH / 2);
+			
+			// OPTIMIZED: Draw only edges, skip if off-screen
+			int steps = abs(sx2 - sx1);
+			if (steps < 1) steps = 1;
+			
+			// Skip walls that are completely off-screen
+			if ((sx1 < 0 && sx2 < 0) || (sx1 >= SW && sx2 >= SW)) continue;
+			
+			float xInc = (float)(sx2 - sx1) / (float)steps;
+			float yInc_top = (float)(sy2_top - sy1_top) / (float)steps;
+			float yInc_bottom = (float)(sy2_bottom - sy1_bottom) / (float)steps;
+			
+			float xx = (float)sx1;
+			float yy_top = (float)sy1_top;
+			float yy_bottom = (float)sy1_bottom;
+			
+			// OPTIMIZED: Draw wall outline (reduced frequency, every 2 pixels instead of 1)
+			for (int i = 0; i <= steps; i += 2) {
+				int px = (int)xx;
+				int py_top = (int)yy_top;
+				int py_bottom = (int)yy_bottom;
+				
+				// Bounds check
+				if (px < 0 || px >= SW) {
+					xx += xInc * 2;
+					yy_top += yInc_top * 2;
+					yy_bottom += yInc_bottom * 2;
+					continue;
+				}
+				
+				// Draw top edge
+				if (py_top >= 0 && py_top < SH) {
+					pixel(px, py_top, 255, 0, 255); // Magenta for wall hitbox
+				}
+				
+				// Draw bottom edge
+				if (py_bottom >= 0 && py_bottom < SH) {
+					pixel(px, py_bottom, 255, 0, 255); // Magenta for wall hitbox
+				}
+				
+				// OPTIMIZED: Draw vertical line connecting top and bottom (every 8 pixels instead of 4)
+				if (i % 8 == 0) {
+					int y_start = py_bottom < py_top ? py_bottom : py_top;
+					int y_end = py_bottom > py_top ? py_bottom : py_top;
+					
+					// Clamp to screen bounds
+					if (y_start < 0) y_start = 0;
+					if (y_end >= SH) y_end = SH - 1;
+					
+					// Draw vertical line with skipping (every 3 pixels)
+					for (int yy = y_start; yy <= y_end; yy += 3) {
+						pixel(px, yy, 255, 0, 255); // Magenta vertical line
+					}
+				}
+				
+				xx += xInc * 2;
+				yy_top += yInc_top * 2;
+				yy_bottom += yInc_bottom * 2;
+			}
+		}
+	}
+}
+
+void display() {
+	int x, y;
+
+	if (T.fr1 - T.fr2 >= 28) { // 35 fps (1000ms/35 = ~28.57ms per frame)
+		// If we should show main screen (haven't pressed Enter yet), just draw that
+		if (shouldShowMainScreen()) {
+			drawMainScreen(pixel, SW, SH);
+		}
+		else {
+			// Normal game rendering
+			clearBackground();
+			
+			// Only update player movement and enemies if not paused
+			if (!gamePaused) {
+				movePl();
+				// Update enemy AI with current time for animation
+				updateEnemies(P.x, P.y, P.z, T.fr1);
+			}
+			
+			draw3D();
+			
+			// Update and draw automap (modular)
+			updateAutomap();
+			drawAutomap(pixel, SW, SH, (PlayerState*)&P, (WallData*)W, (SectorData*)S, numSect, (MathTable*)&M);
+			
+			// Update console animation
+			updateConsole();
+			
+			// Update and draw FPS counter (modular)
+			updateFPSCounter(T.fr1);
+			
+			// Draw debug overlay if enabled (includes FPS, crosshair, coordinates, hitboxes)
+			if (isFPSDisplayEnabled()) {
+				// Draw wall collision zones
+				drawWallDebugOverlay();
+				
+				// Draw player position info and crosshair
+				drawDebugOverlay(pixel, SW, SH, P.x, P.y, P.z, P.a, P.l);
+				
+				// Enemy debug overlay is now drawn inside draw3D() BEFORE sprites
+				// This ensures proper occlusion by enemy sprites
+				
+				// OPTIMIZED: Draw player hitbox (fewer points, every 15 degrees instead of 8)
+				int playerScreenRadius = 15; // Visual representation of PLAYER_RADIUS
+				int centerX = SW / 2;
+				int centerY = SH / 2;
+				
+				// Draw player collision circle (cyan color) - optimized with fewer points
+				for (int angle = 0; angle < 360; angle += 15) {
+					int x = centerX + (int)(playerScreenRadius * M.cos[angle]);
+					int y = centerY + (int)(playerScreenRadius * M.sin[angle]);
+					if (x >= 0 && x < SW && y >= 0 && y < SH) {
+						pixel(x, y, 0, 255, 255); // Cyan for player hitbox
+					}
+				}
+			}
+
+			// Draw FPS text (old function still works for just FPS number)
+			drawFPSCounter(pixel, SH);
+			
+			// Draw pause menu if game is paused
+			drawPauseMenu();
+			
+			// Draw console on top of everything
+			drawConsoleText();
+			
+			// Update and draw screen melt effect on top of everything (modular)
+			updateScreenMelt();
+			drawScreenMelt(pixel, SW, SH);
+		}
+		
+		T.fr2 = T.fr1;
+		glutSwapBuffers();
+		glutReshapeWindow(GSLW, GSLH); // stops from resizeing window
+	}
+	T.fr1 = glutGet(GLUT_ELAPSED_TIME);
+	glutPostRedisplay();
+}
+
+
+void KeysDown(unsigned char key, int x, int y)
+{
+	// Toggle pause with Escape key (ESC = 27)
+	if (key == 27) {
+		// Don't toggle pause if console is active
+		if (!console.active) {
+			gamePaused = !gamePaused;
+		}
+		return;
+	}
+	
+	// Toggle console with backtick/tilde key
+	if (key == '`' || key == '~') {
+		toggleConsole();
+		return;
+	}
+	
+	// Toggle automap with Tab key (ASCII 9) - now modular
+	if (key == 9) {
+		toggleAutomap();
+		return;
+	}
+	
+	// If console is active, send input to console
+	if (console.active) {
+		consoleHandleKey(key);
+		return;
+	}
+	
+	// Don't process game controls if paused
+	if (gamePaused) return;
+	
+	// Normal game controls
+	if (key == 'w') { K.w = 1; }
+	if (key == 's') { K.s = 1; }
+	if (key == 'a') { K.a = 1; }
+	if (key == 'd') { K.d = 1; }
+	if (key == 'm') { K.m = 1; }
+	if (key == '.') { K.sr = 1; }
+	if (key == ',') { K.sl = 1; }
+	if (key == 13) { 
+		load(); // Reload level
+		startScreenMelt(); // Start melt effect (modular)
+	}
+}
+
+void specialKeys(int key, int x, int y)
+{
+	// Toggle pause with Escape key
+	if (key == 27) { // GLUT_KEY_ESC is 27
+		// Don't toggle pause if console is active
+		if (!console.active) {
+			gamePaused = !gamePaused;
+		}
+		return;
+	}
+	
+	// Don't process special keys if console is active or paused
+	if (console.active || gamePaused) return;
+	
+	// Toggle FPS display with F1 - now modular
+	if (key == GLUT_KEY_F1) { toggleFPSDisplay(); }
+}
+
+void KeysUp(unsigned char key, int x, int y)
+{
+	// Don't process key releases if console is active
+	if (console.active && key != '`' && key != '~') {
+		return;
+	}
+	
+	if (key == 'w') { K.w = 0; }
+	if (key == 's') { K.s = 0; }
+	if (key == 'a') { K.a = 0; }
+	if (key == 'd') { K.d = 0; }
+	if (key == 'm') { K.m = 0; }
+	if (key == '.') { K.sr = 0; }
+	if (key == ',') { K.sl = 0; }
+}
+
+void init() {
+	int x;
+	for (x = 0; x < 360; x++) {
+		M.cos[x] = cos(x * 3.14159 / 180);
+		M.sin[x] = sin(x * 3.14159 / 180);
+	}
+	
+	// Initialize player
+	P.x = 70; P.y = -110; P.z = 20; P.a = 0; P.l = 0;
+
+	// Initialize timing
+	T.fr1 = 0;
+	T.fr2 = 0;
+
+	// Initialize console with screen dimensions
+	initConsole(SW, SH);
+
+	// Initialize FPS counter (modular)
+	initFPSCounter();
+	
+	// Initialize automap (modular)
+	initAutomap();
+	
+	// Initialize enemy system
+	initEnemies();
+	
+	// Add different enemy types in the world for variety
+	addEnemyType(200, 200, 20, ENEMY_TYPE_BOSSA1);   // BOSSA1 enemy (yellow debug hitbox)
+	addEnemyType(400, 300, 20, ENEMY_TYPE_BOSSA2);   // BOSSA2 enemy (cyan debug hitbox)
+	addEnemyType(150, 350, 20, ENEMY_TYPE_BOSSA3);   // BOSSA3 enemy (magenta debug hitbox)
+	addEnemyType(300, 150, 20, ENEMY_TYPE_BOSSA1);   // Another BOSSA1
+	addEnemyType(250, 400, 20, ENEMY_TYPE_BOSSA2);   // Another BOSSA2
+
+	// Initialize texture 0 (128x128 - raw RGB format)
+	Textures[0].w = T_00_WIDTH;
+	Textures[0].h = T_00_HEIGHT;
+	Textures[0].name = T_00;
+
+	// Initialize texture 1 (32x32 checkerboard - raw RGB format)
+	Textures[1].w = T_01_WIDTH;
+	Textures[1].h = T_01_HEIGHT;
+	Textures[1].name = T_01;
+
+	//56x56 texture
+	Textures[2].w = T_02_WIDTH;
+	Textures[2].h = T_02_HEIGHT;
+	Textures[2].name = T_02;
+
+	Textures[3].w = T_03_WIDTH;
+	Textures[3].h = T_03_HEIGHT;
+	Textures[3].name = T_03;
+
+	Textures[4].w = T_04_WIDTH;
+	Textures[4].h = T_04_HEIGHT;
+	Textures[4].name = T_04;
+
+	Textures[5].w = T_05_WIDTH;
+	Textures[5].h = T_05_HEIGHT;
+	Textures[5].name = T_05;
+
+	Textures[6].w = T_06_WIDTH;
+	Textures[6].h = T_06_HEIGHT;
+	Textures[6].name = T_06;
+
+	// Initialize animated texture 7 (WALL57 - 4 frames)
+	Textures[7].w = WALL57_FRAME_WIDTH;
+	Textures[7].h = WALL57_FRAME_HEIGHT;
+	Textures[7].name = WALL57_frames[0];  // Start with first frame
+
+	// Initialize animated texture 8 (WALL58 - 3 frames)
+	Textures[8].w = WALL58_FRAME_WIDTH;
+	Textures[8].h = WALL58_FRAME_HEIGHT;
+	Textures[8].name = WALL58_frame_0;  // Start with first frame
+
+	// Load the map automatically at startup
+	load();
+	
+	// Initialize screen melt effect (but don't start it yet - wait for Enter key)
+	initScreenMelt();
+}
+
+int main(int argc, char* argv[]) {
+	glutInit(&argc, argv);
+	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
+	glutInitWindowPosition(SCRPOS_W, SCRPOS_H);
+	glutInitWindowSize(GSLW, GSLH);
+	glutCreateWindow("");
+	glPointSize(pixelScale); //pixel size
+	gluOrtho2D(0, GSLW, 0, GSLH); // origin
+	init();
+	glutDisplayFunc(display);
+	glutKeyboardFunc(KeysDown);
+	glutKeyboardUpFunc(KeysUp);
+	glutSpecialFunc(specialKeys); // Register special keys handler
+	glutMainLoop();
+	return 0;
+}
