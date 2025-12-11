@@ -128,6 +128,18 @@
     <ClInclude Include="weapon.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="effects.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pickups.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\pistol_stat.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\pistol_shoot.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="DoomClone.sln" />

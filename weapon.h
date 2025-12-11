@@ -5,6 +5,8 @@
 // Provides weapon handling, shooting, and weapon switching
 
 #include <math.h>
+#include "textures/pistol_stat.h"
+#include "textures/pistol_shoot.h"
 
 // Weapon types
 #define WEAPON_FIST 0
@@ -29,6 +31,10 @@
 #define CHAINGUN_RANGE 600
 #define FIST_RANGE 50
 
+// Shooting animation timing
+#define PISTOL_SHOOT_ANIM_DURATION 200  // Total animation duration in ms
+#define PISTOL_SHOOT_FRAME_DURATION 66  // Duration per frame in ms
+
 // Weapon state
 typedef struct {
     int currentWeapon;      // Currently selected weapon
@@ -43,9 +49,13 @@ typedef struct {
 // Global weapon state
 WeaponState weapon;
 
+// Expose current weapon for external access
+int weapon_currentWeapon = WEAPON_PISTOL;
+
 // Initialize weapon system
 void initWeapons(void) {
     weapon.currentWeapon = WEAPON_PISTOL;
+    weapon_currentWeapon = WEAPON_PISTOL;
     
     // Fist has unlimited ammo
     weapon.ammo[WEAPON_FIST] = -1;  // -1 = infinite
@@ -193,6 +203,7 @@ void selectWeapon(int weaponType) {
     // Can always select fist, or any weapon with ammo
     if (weaponType == WEAPON_FIST || weapon.ammo[weaponType] != 0) {
         weapon.currentWeapon = weaponType;
+        weapon_currentWeapon = weaponType;  // Update external variable
     }
 }
 
@@ -320,42 +331,103 @@ void drawMuzzleFlash(void (*pixelFunc)(int, int, int, int, int),
     }
 }
 
-// Draw crosshair
+// Draw crosshair - DISABLED (we now show weapon sprite instead)
 void drawCrosshair(void (*pixelFunc)(int, int, int, int, int),
                    int screenWidth, int screenHeight,
                    int targetingEnemy) {
-    int centerX = screenWidth / 2;
-    int centerY = screenHeight / 2;
-    
-    // Crosshair color (red if targeting enemy, white otherwise)
-    int r = targetingEnemy ? 255 : 200;
-    int g = targetingEnemy ? 0 : 200;
-    int b = targetingEnemy ? 0 : 200;
-    
-    // Crosshair size
-    int size = 4;
-    int gap = 2;
-    
-    // Draw four lines
-    // Top
-    for (int y = centerY - size - gap; y < centerY - gap; y++) {
-        pixelFunc(centerX, y, r, g, b);
-    }
-    // Bottom
-    for (int y = centerY + gap + 1; y <= centerY + size + gap; y++) {
-        pixelFunc(centerX, y, r, g, b);
-    }
-    // Left
-    for (int x = centerX - size - gap; x < centerX - gap; x++) {
-        pixelFunc(x, centerY, r, g, b);
-    }
-    // Right
-    for (int x = centerX + gap + 1; x <= centerX + size + gap; x++) {
-        pixelFunc(x, centerY, r, g, b);
+    // Crosshair disabled - weapon sprite is shown instead
+    (void)pixelFunc;
+    (void)screenWidth;
+    (void)screenHeight;
+    (void)targetingEnemy;
+}
+
+// Draw weapon sprite at bottom center of screen
+void drawWeaponSprite(void (*pixelFunc)(int, int, int, int, int),
+                      int screenWidth, int screenHeight,
+                      int currentTime) {
+    // Currently only pistol sprite is available
+    if (weapon.currentWeapon != WEAPON_PISTOL) {
+        // Draw placeholder for other weapons (just return for now)
+        return;
     }
     
-    // Center dot
-    pixelFunc(centerX, centerY, r, g, b);
+    // Determine which sprite to use (idle or shooting animation)
+    const unsigned char* spriteData = PISTOL_STAT;
+    int spriteWidth = PISTOL_STAT_WIDTH;
+    int spriteHeight = PISTOL_STAT_HEIGHT;
+    
+    // Check if we should show shooting animation
+    int timeSinceShot = currentTime - weapon.muzzleFlashTime;
+    if (timeSinceShot < PISTOL_SHOOT_ANIM_DURATION && timeSinceShot >= 0) {
+        // Calculate which frame to show
+        int frame = timeSinceShot / PISTOL_SHOOT_FRAME_DURATION;
+        if (frame >= PISTOL_SHOOT_FRAME_COUNT) frame = PISTOL_SHOOT_FRAME_COUNT - 1;
+        
+        // Select the appropriate frame
+        spriteWidth = PISTOL_SHOOT_frame_widths[frame];
+        spriteHeight = PISTOL_SHOOT_frame_heights[frame];
+        
+        switch (frame) {
+            case 0:
+                spriteData = PISTOL_SHOOT_frame_0;
+                break;
+            case 1:
+                spriteData = PISTOL_SHOOT_frame_1;
+                break;
+            case 2:
+            default:
+                spriteData = PISTOL_SHOOT_frame_2;
+                break;
+        }
+    }
+    
+    // No scaling - draw at original size
+    int scale = 1;
+    int scaledWidth = spriteWidth * scale;
+    int scaledHeight = spriteHeight * scale;
+    
+    // Position at bottom center - offset down so bottom part is cut off
+    int startX = (screenWidth - scaledWidth) / 2;
+    int startY = -20;  // Move down by 20 pixels so bottom is cut off
+    
+    // Apply weapon bob with more intensity (only when not shooting)
+    float bobOffsetX = 0;
+    float bobOffsetY = 0;
+    if (weapon.weaponBobPhase > 0 && timeSinceShot >= PISTOL_SHOOT_ANIM_DURATION) {
+        // Horizontal bob (side to side)
+        bobOffsetX = sin(weapon.weaponBobPhase * 3.14159f / 180.0f) * 4.0f;
+        // Vertical bob (up and down, double frequency)
+        bobOffsetY = sin(weapon.weaponBobPhase * 2.0f * 3.14159f / 180.0f) * 3.0f;
+    }
+    startX += (int)bobOffsetX;
+    startY += (int)bobOffsetY;
+    
+    // Draw the pistol sprite
+    for (int y = 0; y < spriteHeight; y++) {
+        for (int x = 0; x < spriteWidth; x++) {
+            // Get pixel from texture (flipped vertically)
+            int srcY = spriteHeight - 1 - y;
+            int pixelIndex = (srcY * spriteWidth + x) * 3;
+            
+            int r = spriteData[pixelIndex + 0];
+            int g = spriteData[pixelIndex + 1];
+            int b = spriteData[pixelIndex + 2];
+            
+            // Skip transparent pixels (1, 0, 0 is transparent)
+            if (r == 1 && g == 0 && b == 0) continue;
+            
+            // Draw pixel (no scaling)
+            int drawX = startX + x;
+            int drawY = startY + y;
+            
+            // Bounds check
+            if (drawX >= 0 && drawX < screenWidth && 
+                drawY >= 0 && drawY < screenHeight) {
+                pixelFunc(drawX, drawY, r, g, b);
+            }
+        }
+    }
 }
 
 #endif // WEAPON_H

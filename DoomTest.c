@@ -39,6 +39,12 @@
 // Weapon system
 #include "weapon.h"
 
+// Effects system (screen shake, particles, kill streaks)
+#include "effects.h"
+
+// Pickup system (health, armor, powerups)
+#include "pickups.h"
+
 // Global pause state
 int gamePaused = 0;
 
@@ -62,6 +68,7 @@ typedef struct
 	int sl, sr;             //strafe left, right 
 	int m;                 //move up, down, look up, down
 	int fire;              //fire weapon
+	int firePressed;       //track if fire was already pressed (for single shot)
 }keys;
 keys K;
 
@@ -166,6 +173,20 @@ void load()
 		}
 	}
 
+	// Load pickups from level file
+	int num_loaded_pickups = 0;
+	if (fscanf(fp, "%i", &num_loaded_pickups) != EOF) {
+		initPickups(); // Reset pickups
+		
+		for (s = 0; s < num_loaded_pickups && s < MAX_PICKUPS; s++)
+		{
+			int x, y, z, type, respawns;
+			if (fscanf(fp, "%i %i %i %i %i", &x, &y, &z, &type, &respawns) == 5) {
+				addPickup(type, x, y, z, respawns);
+			}
+		}
+	}
+
 	fclose(fp);
 }
 
@@ -185,8 +206,10 @@ void movePl()
 	if (K.a == 1 && K.m == 0) { P.a -= 4; if (P.a < 0) { P.a += 360; } }
 	if (K.d == 1 && K.m == 0) { P.a += 4; if (P.a > 359) { P.a -= 360; } }
 	
-	int dx = M.sin[P.a] * 10.0;
-	int dy = M.cos[P.a] * 10.0;
+	// Apply speed multiplier from powerups
+	float speedMult = getSpeedMultiplier(T.fr1);
+	int dx = (int)(M.sin[P.a] * 10.0 * speedMult);
+	int dy = (int)(M.cos[P.a] * 10.0 * speedMult);
 	
 	// Store old position for collision rollback
 	int oldX = P.x;
@@ -194,13 +217,19 @@ void movePl()
 	int newX = P.x;
 	int newY = P.y;
 	
+	// Track if player is moving for head bob
+	int isMoving = 0;
+	
 	// Calculate new position based on input
-	if (K.w == 1 && K.m == 0) { newX += dx; newY += dy; }
-	if (K.s == 1 && K.m == 0) { newX -= dx; newY -= dy; }
+	if (K.w == 1 && K.m == 0) { newX += dx; newY += dy; isMoving = 1; }
+	if (K.s == 1 && K.m == 0) { newX -= dx; newY -= dy; isMoving = 1; }
 	
 	//strafe left, right
-	if (K.sr == 1) { newX += dy; newY -= dx; }
-	if (K.sl == 1) { newX -= dy; newY += dx; }
+	if (K.sr == 1) { newX += dy; newY -= dx; isMoving = 1; }
+	if (K.sl == 1) { newX -= dy; newY += dx; isMoving = 1; }
+	
+	// Update head bobbing
+	updateHeadBob(isMoving, T.fr1);
 	
 	// Only update position if no collision (and not in godMode or noclip)
 	if (!godMode && !noclip) {
@@ -1017,6 +1046,10 @@ void display() {
 			drawMainScreen(pixel, SW, SH);
 		}
 		else {
+			// Update effects
+			updateScreenShake(T.fr1);
+			updateParticles(T.fr1);
+			
 			// Normal game rendering
 			clearBackground();
 			
@@ -1024,6 +1057,10 @@ void display() {
 			if (playerDead) {
 				// Still render the world but don't update
 				draw3D();
+				
+				// Draw particles on top
+				drawParticles(pixel, SW, SH, P.x, P.y, P.z, P.a, M.cos, M.sin, T.fr1);
+				
 				drawDeathScreen(pixel, SW, SH);
 				
 				// Draw console on top of everything
@@ -1036,10 +1073,22 @@ void display() {
 					// Update enemy AI with current time for animation
 					updateEnemies(P.x, P.y, P.z, T.fr1);
 					
+					// Update pickups
+					updatePickups(P.x, P.y, P.z, T.fr1);
+					
 					// Handle weapon firing
 					if (K.fire) {
 						int targetEnemy = getEnemyInCrosshair(P.x, P.y, P.a, M.cos, M.sin);
-						fireWeapon(targetEnemy, T.fr1);
+						if (fireWeapon(targetEnemy, T.fr1)) {
+							// Add screen shake when firing
+							if (weapon.currentWeapon == WEAPON_SHOTGUN) {
+								addScreenShake(4.0f);
+							} else if (weapon.currentWeapon == WEAPON_CHAINGUN) {
+								addScreenShake(1.5f);
+							} else if (weapon.currentWeapon == WEAPON_PISTOL) {
+								addScreenShake(1.0f);
+							}
+						}
 					}
 					
 					// Update weapon state
@@ -1049,6 +1098,12 @@ void display() {
 				
 				draw3D();
 				
+				// Draw pickups
+				drawPickups(pixel, SW, SH, P.x, P.y, P.z, P.a, M.cos, M.sin, depthBuffer, T.fr1);
+				
+				// Draw particles on top
+				drawParticles(pixel, SW, SH, P.x, P.y, P.z, P.a, M.cos, M.sin, T.fr1);
+				
 				// Check if aiming at enemy for crosshair color
 				int targetEnemy = getEnemyInCrosshair(P.x, P.y, P.a, M.cos, M.sin);
 				
@@ -1057,17 +1112,32 @@ void display() {
 					drawCrosshair(pixel, SW, SH, targetEnemy >= 0);
 				}
 				
-				// Draw muzzle flash
+				// Draw muzzle flash BEFORE weapon sprite (so it appears behind the gun)
 				drawMuzzleFlash(pixel, SW, SH, T.fr1);
+				
+				// Draw weapon sprite at bottom center of screen (on top of muzzle flash)
+				drawWeaponSprite(pixel, SW, SH, T.fr1);
 				
 				// Draw damage overlay (red flash when hit)
 				drawDamageOverlay(pixel, SW, SH, T.fr1);
+				
+				// Draw low health warning effect
+				drawLowHealthOverlay(pixel, SW, SH, playerHealth, T.fr1);
+				
+				// Draw pickup flash effect
+				drawFlashOverlay(pixel, SW, SH, T.fr1);
+				
+				// Draw kill streak messages
+				drawKillStreakMessage(pixel, SW, SH, T.fr1);
 				
 				// Draw HUD (health, armor, etc.)
 				drawHUD(pixel, SW, SH);
 				
 				// Draw weapon HUD (ammo count)
 				drawWeaponHUD(pixel, SW, SH);
+				
+				// Draw powerup status indicators
+				drawPowerupStatus(pixel, SW, SH, T.fr1);
 				
 				// Update and draw automap (modular)
 				updateAutomap();
@@ -1079,20 +1149,15 @@ void display() {
 				// Update and draw FPS counter (modular)
 				updateFPSCounter(T.fr1);
 				
-				// Draw debug overlay if enabled (includes FPS, crosshair, coordinates, hitboxes)
+				// Draw debug overlay if enabled
 				if (isFPSDisplayEnabled()) {
-					// Draw wall collision zones
 					drawWallDebugOverlay();
-					
-					// Draw player position info and crosshair
 					drawDebugOverlay(pixel, SW, SH, P.x, P.y, P.z, P.a, P.l);
 					
-					// OPTIMIZED: Draw player hitbox (fewer points, every 15 degrees instead of 8)
 					int playerScreenRadius = 15;
 					int centerX = SW / 2;
 					int centerY = SH / 2;
 					
-					// Draw player collision circle (cyan color)
 					for (int angle = 0; angle < 360; angle += 15) {
 						int x = centerX + (int)(playerScreenRadius * M.cos[angle]);
 						int y = centerY + (int)(playerScreenRadius * M.sin[angle]);
@@ -1343,12 +1408,29 @@ void init() {
 	// Initialize enemy system
 	initEnemies();
 	
+	// Initialize effects system (NEW)
+	initEffects();
+	
+	// Initialize pickup system (NEW)
+	initPickups();
+	
 	// Add different enemy types in the world for variety
-	addEnemyType(200, 200, 20, ENEMY_TYPE_BOSSA1);   // BOSSA1 enemy
-	addEnemyType(400, 300, 20, ENEMY_TYPE_BOSSA2);   // BOSSA2 enemy
-	addEnemyType(150, 350, 20, ENEMY_TYPE_BOSSA3);   // BOSSA3 enemy
-	addEnemyType(300, 150, 20, ENEMY_TYPE_BOSSA1);   // Another BOSSA1
-	addEnemyType(250, 400, 20, ENEMY_TYPE_BOSSA2);   // Another BOSSA2
+	addEnemyType(200, 200, 20, ENEMY_TYPE_BOSSA1);
+	addEnemyType(400, 300, 20, ENEMY_TYPE_BOSSA2);
+	addEnemyType(150, 350, 20, ENEMY_TYPE_BOSSA3);
+	addEnemyType(300, 150, 20, ENEMY_TYPE_BOSSA1);
+	addEnemyType(250, 400, 20, ENEMY_TYPE_BOSSA2);
+	
+	// Add pickups around the level
+	addPickup(PICKUP_HEALTH_SMALL, 100, 100, 20, 1);
+	addPickup(PICKUP_HEALTH_LARGE, 250, 250, 20, 1);
+	addPickup(PICKUP_ARMOR_SMALL, 180, 150, 20, 1);
+	addPickup(PICKUP_ARMOR_LARGE, 350, 200, 20, 1);
+	addPickup(PICKUP_AMMO_CLIP, 120, 200, 20, 1);
+	addPickup(PICKUP_AMMO_SHELLS, 280, 350, 20, 0);
+	addPickup(PICKUP_AMMO_BULLETS, 320, 280, 20, 1);
+	addPickup(PICKUP_BERSERK, 400, 400, 20, 0);
+	addPickup(PICKUP_SPEED, 150, 280, 20, 0);
 
 	// Initialize texture 0 (128x128 - raw RGB format)
 	Textures[0].w = T_00_WIDTH;
@@ -1397,7 +1479,6 @@ void init() {
 	// Initialize screen melt effect (but don't start it yet - wait for Enter key)
 	initScreenMelt();
 }
-
 int main(int argc, char* argv[]) {
 	glutInit(&argc, argv);
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
@@ -1411,9 +1492,9 @@ int main(int argc, char* argv[]) {
 	glutKeyboardFunc(KeysDown);
 	glutKeyboardUpFunc(KeysUp);
 	glutSpecialFunc(specialKeys);
-	glutMouseFunc(mouseClick);         // Add mouse click handler
-	glutPassiveMotionFunc(mouseMotion); // Add mouse motion handler
-	glutMotionFunc(mouseMotion);        // Also handle motion while button pressed
+	glutMouseFunc(mouseClick);
+	glutPassiveMotionFunc(mouseMotion);
+	glutMotionFunc(mouseMotion);
 	glutMainLoop();
 	return 0;
 }

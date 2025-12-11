@@ -130,11 +130,13 @@
     <ClInclude Include="automap.h" />
     <ClInclude Include="console.h" />
     <ClInclude Include="console_font.h" />
+    <ClInclude Include="effects.h" />
     <ClInclude Include="enemy.h" />
     <ClInclude Include="floors.h" />
     <ClInclude Include="fps_counter.h" />
     <ClInclude Include="hud.h" />
     <ClInclude Include="level.h" />
+    <ClInclude Include="pickups.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="resource1.h" />
     <ClInclude Include="screen_melt.h" />
@@ -151,6 +153,8 @@
     <ClInclude Include="textures\main_screen.h" />
     <ClInclude Include="textures\number.h" />
     <ClInclude Include="textures\oracular_texture.h" />
+    <ClInclude Include="textures\pistol_shoot.h" />
+    <ClInclude Include="textures\pistol_stat.h" />
     <ClInclude Include="textures\TEXTURE_TEMPLATE.h" />
     <ClInclude Include="textures\T_00.h" />
     <ClInclude Include="textures\T_01.h" />

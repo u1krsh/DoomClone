@@ -175,13 +175,36 @@ void damageEnemy(int enemyIndex, int damage, int currentTime) {
 	if (enemies[enemyIndex].state == ENEMY_STATE_DEAD || 
 	    enemies[enemyIndex].state == ENEMY_STATE_DYING) return;
 	
+	// Apply damage multiplier from powerups (berserk)
+	extern float getDamageMultiplier(int currentTime, int weaponType);
+	extern int weapon_currentWeapon;  // Access current weapon
+	float mult = getDamageMultiplier(currentTime, weapon_currentWeapon);
+	damage = (int)(damage * mult);
+	
 	enemies[enemyIndex].health -= damage;
+	
+	// Spawn blood particles at enemy position
+	extern void spawnBloodParticles(int, int, int, int);
+	spawnBloodParticles(enemies[enemyIndex].x, enemies[enemyIndex].y, 
+	                    enemies[enemyIndex].z, 5 + (damage / 10));
+	
+	// Add screen shake when hitting enemy
+	extern void addScreenShake(float amount);
+	addScreenShake(1.0f + (damage / 30.0f));
 	
 	if (enemies[enemyIndex].health <= 0) {
 		enemies[enemyIndex].health = 0;
 		enemies[enemyIndex].state = ENEMY_STATE_DYING;
 		enemies[enemyIndex].stateStartTime = currentTime;
 		enemies[enemyIndex].animFrame = 0;
+		
+		// Register kill for kill streak system
+		extern void registerKill(int currentTime);
+		registerKill(currentTime);
+		
+		// Spawn extra blood on death
+		spawnBloodParticles(enemies[enemyIndex].x, enemies[enemyIndex].y,
+		                    enemies[enemyIndex].z, 15);
 	} else {
 		enemies[enemyIndex].state = ENEMY_STATE_HURT;
 		enemies[enemyIndex].stateStartTime = currentTime;
@@ -193,6 +216,18 @@ void damagePlayer(int damage, int currentTime) {
 	extern int godMode;
 	if (godMode) return;
 	if (playerDead) return;
+	
+	// Check for invulnerability powerup
+	extern int isInvulnerable(int currentTime);
+	if (isInvulnerable(currentTime)) return;
+	
+	// Reset kill streak when taking damage
+	extern void resetKillStreak(void);
+	resetKillStreak();
+	
+	// Add screen shake when taking damage
+	extern void addScreenShake(float amount);
+	addScreenShake(3.0f + (damage / 10.0f));
 	
 	// Apply armor first (50% damage reduction)
 	int actualDamage = damage;
