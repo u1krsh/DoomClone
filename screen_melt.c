@@ -4,12 +4,12 @@
 #include "textures/main_screen.h"  // Include main screen texture
 
 #define MAX_SCREEN_WIDTH 1920  // Support up to 1920 width
+#define MELT_SPEED 8           // Pixels per frame
 
-// Screen melt effect (Doom-style)
+// Screen melt effect
 typedef struct {
 	int active;                          // is melt currently playing
-	int columnY[MAX_SCREEN_WIDTH];       // current Y position of each column (how far melted down)
-	int columnSpeed[MAX_SCREEN_WIDTH];   // fall speed for each column
+	int columnY[MAX_SCREEN_WIDTH];       // current Y position of each column
 	int complete;                        // is melt complete
 	int screenWidth;                     // current screen width
 	int screenHeight;                    // current screen height
@@ -23,30 +23,27 @@ void initScreenMelt(void) {
 	int x;
 	melt.active = 0;
 	melt.complete = 0;
-	melt.started = 0;  // Haven't started yet - show main screen
+	melt.started = 0;
 	melt.screenWidth = 0;
 	melt.screenHeight = 0;
 	
-	// Initialize each column with random starting position and speed
 	for (x = 0; x < MAX_SCREEN_WIDTH; x++) {
 		melt.columnY[x] = 0;
-		// Random speed between 2 and 10 pixels per frame (much faster and more random)
-		melt.columnSpeed[x] = 2 + (rand() % 9);
 	}
 }
 
-// Start the screen melt effect
+// Start the screen melt effect with random peaks
 void startScreenMelt(void) {
 	int x;
 	melt.active = 1;
 	melt.complete = 0;
-	melt.started = 1;  // Now we've started melting
+	melt.started = 1;
 	
-	// Randomize column speeds and reset positions
+	// Each column gets a completely random starting offset
+	// Range: -100 to 0 (negative = delay before falling)
+	// This creates big jagged random peaks
 	for (x = 0; x < MAX_SCREEN_WIDTH; x++) {
-		melt.columnY[x] = 0;
-		// Much more variation: speeds between 2 and 15 pixels per frame
-		melt.columnSpeed[x] = 2 + (rand() % 14);
+		melt.columnY[x] = -(rand() % 100);
 	}
 }
 
@@ -57,53 +54,40 @@ void updateScreenMelt(void) {
 	int x;
 	int allComplete = 1;
 	
-	// Update each column
+	// All columns advance at the same speed
 	for (x = 0; x < melt.screenWidth; x++) {
+		melt.columnY[x] += MELT_SPEED;
+		
 		if (melt.columnY[x] < melt.screenHeight) {
-			melt.columnY[x] += melt.columnSpeed[x];
-			
-			// Add random stuttering for more chaos
-			if (rand() % 10 < 3) { // 30% chance to add extra speed
-				melt.columnY[x] += (rand() % 5);
-			}
-			
-			if (melt.columnY[x] < melt.screenHeight) {
-				allComplete = 0;
-			}
+			allComplete = 0;
 		}
 	}
 	
-	// If all columns have finished, end the melt
 	if (allComplete) {
 		melt.active = 0;
 		melt.complete = 1;
 	}
 }
 
-// Draw the main screen (before melt starts) - FIXED: Correct vertical orientation
+// Draw the main screen (before melt starts)
 void drawMainScreen(void (*pixelFunc)(int, int, int, int, int), int screenWidth, int screenHeight) {
 	int x, y;
 	
 	for (y = 0; y < screenHeight; y++) {
 		for (x = 0; x < screenWidth; x++) {
-			// Calculate texture coordinates (scale texture to fit screen)
 			float u = (float)x / (float)screenWidth;
-			float v = (float)(screenHeight - 1 - y) / (float)screenHeight;  // FIXED: Flip vertically
+			float v = (float)(screenHeight - 1 - y) / (float)screenHeight;
 			
-			// Map to texture space (PFUB2 is 320x200)
 			int tx = (int)(u * PFUB2_WIDTH);
 			int ty = (int)(v * PFUB2_HEIGHT);
 			
-			// Clamp to texture bounds
 			if (tx < 0) tx = 0;
 			if (tx >= PFUB2_WIDTH) tx = PFUB2_WIDTH - 1;
 			if (ty < 0) ty = 0;
 			if (ty >= PFUB2_HEIGHT) ty = PFUB2_HEIGHT - 1;
 			
-			// Get pixel from texture (RGB format, 3 bytes per pixel)
 			int pixelIndex = (ty * PFUB2_WIDTH + tx) * 3;
 			
-			// Read RGB values
 			int r = PFUB2[pixelIndex + 0];
 			int g = PFUB2[pixelIndex + 1];
 			int b = PFUB2[pixelIndex + 2];
@@ -113,43 +97,45 @@ void drawMainScreen(void (*pixelFunc)(int, int, int, int, int), int screenWidth,
 	}
 }
 
-// Draw the melt effect (draws main_screen texture that melts down to reveal game) - FIXED: Melt from bottom to top
+// Draw the melt effect
 void drawScreenMelt(void (*pixelFunc)(int, int, int, int, int), int screenWidth, int screenHeight) {
 	if (!melt.active) return;
 	
-	// Update screen dimensions
 	melt.screenWidth = screenWidth;
 	melt.screenHeight = screenHeight;
 	
 	int x, y;
 	
-	// For each column, draw texture pixels from the TOP down to the melt position
-	// This way the texture "peels away" upward to reveal the game (melt goes bottom to top)
 	for (x = 0; x < screenWidth; x++) {
-		int meltPos = melt.columnY[x];
+		int offset = melt.columnY[x];
 		
-		// Draw main_screen texture from the top of screen down to the melt position
-		// Everything below meltPos is melted away (revealing game)
-		// Everything above meltPos still shows the texture
-		for (y = 0; y < screenHeight - meltPos; y++) {
-			// Calculate texture coordinates (scale texture to fit screen)
-			float u = (float)x / (float)screenWidth;
-			float v = (float)(screenHeight - 1 - y) / (float)screenHeight;  // Flip vertically
+		// Column hasn't started falling yet
+		if (offset < 0) {
+			offset = 0;
+		}
+		
+		// Column has completely fallen off
+		if (offset >= screenHeight) {
+			continue;
+		}
+		
+		// Draw the visible portion of this column
+		for (y = 0; y < screenHeight - offset; y++) {
+			int titleY = y + offset;
 			
-			// Map to texture space (PFUB2 is 320x200)
+			float u = (float)x / (float)screenWidth;
+			float v = (float)(screenHeight - 1 - titleY) / (float)screenHeight;
+			
 			int tx = (int)(u * PFUB2_WIDTH);
 			int ty = (int)(v * PFUB2_HEIGHT);
 			
-			// Clamp to texture bounds
 			if (tx < 0) tx = 0;
 			if (tx >= PFUB2_WIDTH) tx = PFUB2_WIDTH - 1;
 			if (ty < 0) ty = 0;
 			if (ty >= PFUB2_HEIGHT) ty = PFUB2_HEIGHT - 1;
 			
-			// Get pixel from texture (RGB format, 3 bytes per pixel)
 			int pixelIndex = (ty * PFUB2_WIDTH + tx) * 3;
 			
-			// Read RGB values
 			int r = PFUB2[pixelIndex + 0];
 			int g = PFUB2[pixelIndex + 1];
 			int b = PFUB2[pixelIndex + 2];
@@ -159,17 +145,14 @@ void drawScreenMelt(void (*pixelFunc)(int, int, int, int, int), int screenWidth,
 	}
 }
 
-// Check if we should show main screen (not started melting yet)
 int shouldShowMainScreen(void) {
 	return !melt.started;
 }
 
-// Check if melt is currently active
 int isMeltActive(void) {
 	return melt.active;
 }
 
-// Check if melt is complete
 int isMeltComplete(void) {
 	return melt.complete;
 }

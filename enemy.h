@@ -209,6 +209,9 @@ void damagePlayer(int damage, int currentTime) {
 	if (playerHealth <= 0) {
 		playerHealth = 0;
 		playerDead = 1;
+		// Start screen melt when player dies
+		extern void startScreenMelt(void);
+		startScreenMelt();
 	}
 }
 
@@ -245,20 +248,22 @@ void updateEnemies(int playerX, int playerY, int playerZ, int currentTime) {
 		
 		if (enemies[i].state == ENEMY_STATE_DEAD) continue;
 		
-		// Handle hurt state recovery
+		// Handle hurt state recovery (but don't skip movement!)
 		if (enemies[i].state == ENEMY_STATE_HURT) {
 			if (currentTime - enemies[i].stateStartTime >= ENEMY_HURT_DURATION) {
 				enemies[i].state = ENEMY_STATE_CHASING;
 			}
-			continue;
+			// Don't continue - let the enemy keep moving while hurt
 		}
 		
 		// Calculate distance to player
 		int dist = enemyDist(enemies[i].x, enemies[i].y, playerX, playerY);
 		
 		if (dist < ENEMY_ATTACK_RADIUS) {
-			// Attack player
-			enemies[i].state = ENEMY_STATE_ATTACKING;
+			// Attack player (only if not hurt)
+			if (enemies[i].state != ENEMY_STATE_HURT) {
+				enemies[i].state = ENEMY_STATE_ATTACKING;
+			}
 			
 			// Check attack cooldown
 			if (currentTime - enemies[i].lastAttackTime >= ENEMY_ATTACK_COOLDOWN) {
@@ -267,15 +272,17 @@ void updateEnemies(int playerX, int playerY, int playerZ, int currentTime) {
 			}
 		}
 		else if (dist < ENEMY_DETECTION_RADIUS) {
-			// Chase player
-			enemies[i].state = ENEMY_STATE_CHASING;
+			// Chase player (only update state if not hurt)
+			if (enemies[i].state != ENEMY_STATE_HURT) {
+				enemies[i].state = ENEMY_STATE_CHASING;
+			}
 			
 			// Calculate direction to player
 			int dx = playerX - enemies[i].x;
 			int dy = playerY - enemies[i].y;
 			float angle = atan2(dx, dy);
 			
-			// Move towards player
+			// Move towards player (even when hurt!)
 			if (dist > ENEMY_COLLISION_RADIUS) {
 				enemies[i].x += (int)(sin(angle) * ENEMY_SPEED);
 				enemies[i].y += (int)(cos(angle) * ENEMY_SPEED);
@@ -293,9 +300,11 @@ void updateEnemies(int playerX, int playerY, int playerZ, int currentTime) {
 				}
 			}
 		} else {
-			// Idle state - use frame 0
-			enemies[i].state = ENEMY_STATE_IDLE;
-			enemies[i].animFrame = 0;
+			// Idle state - use frame 0 (only if not hurt)
+			if (enemies[i].state != ENEMY_STATE_HURT) {
+				enemies[i].state = ENEMY_STATE_IDLE;
+				enemies[i].animFrame = 0;
+			}
 		}
 	}
 }
