@@ -6,7 +6,8 @@
 
 #include <math.h>
 #include "textures/pistol_stat.h"
-#include "textures/pistol_shoot.h"
+#include "textures/pistol_shooty.h"
+#include "textures/pistol_flash.h"
 
 // Weapon types
 #define WEAPON_FIST 0
@@ -293,42 +294,15 @@ void drawWeaponHUD(void (*pixelFunc)(int, int, int, int, int),
     drawString(ammoX, ammoY, ammoText, ammoR, ammoG, ammoB, pixelFunc);
 }
 
-// Draw muzzle flash effect
+// Draw muzzle flash effect - DISABLED (using shoot animation instead)
 void drawMuzzleFlash(void (*pixelFunc)(int, int, int, int, int),
                      int screenWidth, int screenHeight,
                      int currentTime) {
-    // Check if we should show muzzle flash
-    int timeSinceFlash = currentTime - weapon.muzzleFlashTime;
-    if (timeSinceFlash > 50) return;  // Flash lasts 50ms
-    
-    // Draw simple muzzle flash in center-bottom of screen
-    int centerX = screenWidth / 2;
-    int flashY = screenHeight / 4;  // Upper part of lower half
-    
-    // Flash size based on weapon
-    int flashSize = 20;
-    if (weapon.currentWeapon == WEAPON_SHOTGUN) flashSize = 40;
-    if (weapon.currentWeapon == WEAPON_CHAINGUN) flashSize = 15;
-    if (weapon.currentWeapon == WEAPON_FIST) return;  // No flash for fist
-    
-    // Draw flash (yellow/white)
-    for (int y = flashY - flashSize; y <= flashY + flashSize; y++) {
-        for (int x = centerX - flashSize; x <= centerX + flashSize; x++) {
-            if (x < 0 || x >= screenWidth || y < 0 || y >= screenHeight) continue;
-            
-            int dx = x - centerX;
-            int dy = y - flashY;
-            int dist = dx * dx + dy * dy;
-            
-            if (dist < flashSize * flashSize / 4) {
-                pixelFunc(x, y, 255, 255, 255);  // White core
-            } else if (dist < flashSize * flashSize) {
-                if ((x + y) % 2 == 0) {
-                    pixelFunc(x, y, 255, 200, 50);  // Yellow outer
-                }
-            }
-        }
-    }
+    // Muzzle flash disabled - using pistol shoot animation frames instead
+    (void)pixelFunc;
+    (void)screenWidth;
+    (void)screenHeight;
+    (void)currentTime;
 }
 
 // Draw crosshair - DISABLED (we now show weapon sprite instead)
@@ -356,28 +330,33 @@ void drawWeaponSprite(void (*pixelFunc)(int, int, int, int, int),
     const unsigned char* spriteData = PISTOL_STAT;
     int spriteWidth = PISTOL_STAT_WIDTH;
     int spriteHeight = PISTOL_STAT_HEIGHT;
+    int showFlash = 0;  // Flag to show muzzle flash overlay
     
     // Check if we should show shooting animation
     int timeSinceShot = currentTime - weapon.muzzleFlashTime;
     if (timeSinceShot < PISTOL_SHOOT_ANIM_DURATION && timeSinceShot >= 0) {
         // Calculate which frame to show
         int frame = timeSinceShot / PISTOL_SHOOT_FRAME_DURATION;
-        if (frame >= PISTOL_SHOOT_FRAME_COUNT) frame = PISTOL_SHOOT_FRAME_COUNT - 1;
+        if (frame >= PISTOL_SHOOTY_FRAME_COUNT) frame = PISTOL_SHOOTY_FRAME_COUNT - 1;
         
         // Select the appropriate frame
-        spriteWidth = PISTOL_SHOOT_frame_widths[frame];
-        spriteHeight = PISTOL_SHOOT_frame_heights[frame];
+        spriteWidth = PISTOL_SHOOTY_frame_widths[frame];
+        spriteHeight = PISTOL_SHOOTY_frame_heights[frame];
         
         switch (frame) {
             case 0:
-                spriteData = PISTOL_SHOOT_frame_0;
+                spriteData = PISTOL_SHOOTY_frame_0;
+                showFlash = 1;  // Show flash on first frame
                 break;
             case 1:
-                spriteData = PISTOL_SHOOT_frame_1;
+                spriteData = PISTOL_SHOOTY_frame_1;
                 break;
             case 2:
+                spriteData = PISTOL_SHOOTY_frame_2;
+                break;
+            case 3:
             default:
-                spriteData = PISTOL_SHOOT_frame_2;
+                spriteData = PISTOL_SHOOTY_frame_3;
                 break;
         }
     }
@@ -425,6 +404,38 @@ void drawWeaponSprite(void (*pixelFunc)(int, int, int, int, int),
             if (drawX >= 0 && drawX < screenWidth && 
                 drawY >= 0 && drawY < screenHeight) {
                 pixelFunc(drawX, drawY, r, g, b);
+            }
+        }
+    }
+    
+    // Draw muzzle flash overlay on top of the gun (first frame only)
+    if (showFlash) {
+        // Position flash above the gun barrel (shifted right to align with barrel)
+        int flashX = (screenWidth - PISTOL_FLASH_WIDTH) / 2 + 18;  // Shifted right
+        int flashY = startY + spriteHeight - 19;  // Position above gun barrel
+        
+        for (int y = 0; y < PISTOL_FLASH_HEIGHT; y++) {
+            for (int x = 0; x < PISTOL_FLASH_WIDTH; x++) {
+                // Get pixel from flash texture (flipped vertically)
+                int srcY = PISTOL_FLASH_HEIGHT - 1 - y;
+                int pixelIndex = (srcY * PISTOL_FLASH_WIDTH + x) * 3;
+                
+                int r = PISTOL_FLASH[pixelIndex + 0];
+                int g = PISTOL_FLASH[pixelIndex + 1];
+                int b = PISTOL_FLASH[pixelIndex + 2];
+                
+                // Skip transparent pixels (1, 0, 0 is transparent)
+                if (r == 1 && g == 0 && b == 0) continue;
+                
+                // Draw pixel
+                int drawX = flashX + x;
+                int drawY = flashY + y;
+                
+                // Bounds check
+                if (drawX >= 0 && drawX < screenWidth && 
+                    drawY >= 0 && drawY < screenHeight) {
+                    pixelFunc(drawX, drawY, r, g, b);
+                }
             }
         }
     }

@@ -45,6 +45,9 @@
 // Pickup system (health, armor, powerups)
 #include "pickups.h"
 
+// Sound system
+#include "sound.h"
+
 // Global pause state
 int gamePaused = 0;
 
@@ -123,6 +126,10 @@ void drawWallDebugOverlay();
 void drawPauseMenu();
 int checkWallCollision(int newX, int newY);
 void toggleMouseLook();  // Add forward declaration for mouse look toggle
+
+// Mouse look state (needs to be declared before mouseClick uses it)
+int lastMouseX = -1;
+int mouseEnabled = 0;
 
 void load()
 {
@@ -1076,10 +1083,13 @@ void display() {
 					// Update pickups
 					updatePickups(P.x, P.y, P.z, T.fr1);
 					
-					// Handle weapon firing
-					if (K.fire) {
+					// Handle weapon firing - only fire once per click (not auto-fire)
+					if (K.fire && !K.firePressed) {
 						int targetEnemy = getEnemyInCrosshair(P.x, P.y, P.a, M.cos, M.sin);
 						if (fireWeapon(targetEnemy, T.fr1)) {
+							// Play weapon sound
+							playWeaponSound(weapon.currentWeapon);
+							
 							// Add screen shake when firing
 							if (weapon.currentWeapon == WEAPON_SHOTGUN) {
 								addScreenShake(4.0f);
@@ -1088,6 +1098,7 @@ void display() {
 							} else if (weapon.currentWeapon == WEAPON_PISTOL) {
 								addScreenShake(1.0f);
 							}
+							K.firePressed = 1;  // Mark as pressed to prevent auto-fire
 						}
 					}
 					
@@ -1307,19 +1318,33 @@ void KeysUp(unsigned char key, int x, int y)
 	if (key == 'm') { K.m = 0; }
 	if (key == '.') { K.sr = 0; }
 	if (key == ',') { K.sl = 0; }
-	if (key == ' ') { K.fire = 0; }
+	if (key == ' ') { K.fire = 0; K.firePressed = 0; }  // Reset both on release
 }
 
 // Mouse handling
 void mouseClick(int button, int state, int x, int y) {
+	// Enable mouse look on any click if not already enabled
+	if (!mouseEnabled && state == GLUT_DOWN && !console.active && !gamePaused && !playerDead) {
+		toggleMouseLook();
+	}
+	
 	if (console.active || gamePaused || playerDead) return;
 	
 	// Left mouse button for shooting
 	if (button == GLUT_LEFT_BUTTON) {
 		if (state == GLUT_DOWN) {
 			K.fire = 1;
+			// Don't reset firePressed here - let the firing logic handle it
 		} else {
 			K.fire = 0;
+			K.firePressed = 0;  // Reset on mouse release to allow next shot
+		}
+	}
+	
+	// Right mouse button to release mouse
+	if (button == GLUT_RIGHT_BUTTON && state == GLUT_DOWN) {
+		if (mouseEnabled) {
+			toggleMouseLook();  // Release mouse on right click
 		}
 	}
 	
@@ -1333,9 +1358,6 @@ void mouseClick(int button, int state, int x, int y) {
 }
 
 // Mouse motion for looking around
-int lastMouseX = -1;
-int mouseEnabled = 0;
-
 void mouseMotion(int x, int y) {
 	if (!mouseEnabled || console.active || gamePaused || playerDead) return;
 	
@@ -1388,7 +1410,7 @@ void init() {
 	
 	// Initialize keys
 	K.w = 0; K.s = 0; K.a = 0; K.d = 0;
-	K.sl = 0; K.sr = 0; K.m = 0; K.fire = 0;
+	K.sl = 0; K.sr = 0; K.m = 0; K.fire = 0; K.firePressed = 0;
 
 	// Initialize console with screen dimensions
 	initConsole(SW, SH);
@@ -1413,6 +1435,9 @@ void init() {
 	
 	// Initialize pickup system (NEW)
 	initPickups();
+	
+	// Initialize sound system
+	initSound();
 	
 	// Add different enemy types in the world for variety
 	addEnemyType(200, 200, 20, ENEMY_TYPE_BOSSA1);

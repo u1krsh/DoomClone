@@ -137,7 +137,13 @@
     <ClInclude Include="textures\pistol_stat.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="textures\pistol_shoot.h">
+    <ClInclude Include="textures\pistol_shooty.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\pistol_flash.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="sound.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -172,5 +178,10 @@
     <ClCompile Include="hud.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Media Include="sounds\guns\pistol\DSPISTOL.wav">
+      <Filter>Header Files</Filter>
+    </Media>
   </ItemGroup>
 </Project>

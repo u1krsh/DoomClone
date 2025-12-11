@@ -140,6 +140,7 @@
     <ClInclude Include="resource.h" />
     <ClInclude Include="resource1.h" />
     <ClInclude Include="screen_melt.h" />
+    <ClInclude Include="sound.h" />
     <ClInclude Include="textures\all_textures.h" />
     <ClInclude Include="textures\BOSSA1.h" />
     <ClInclude Include="textures\BOSSA1_attack.h" />
@@ -153,7 +154,8 @@
     <ClInclude Include="textures\main_screen.h" />
     <ClInclude Include="textures\number.h" />
     <ClInclude Include="textures\oracular_texture.h" />
-    <ClInclude Include="textures\pistol_shoot.h" />
+    <ClInclude Include="textures\pistol_flash.h" />
+    <ClInclude Include="textures\pistol_shooty.h" />
     <ClInclude Include="textures\pistol_stat.h" />
     <ClInclude Include="textures\TEXTURE_TEMPLATE.h" />
     <ClInclude Include="textures\T_00.h" />
@@ -186,6 +188,9 @@
     <ClCompile Include="fps_counter.c" />
     <ClCompile Include="hud.c" />
     <ClCompile Include="screen_melt.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <Media Include="sounds\guns\pistol\DSPISTOL.wav" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
