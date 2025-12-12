@@ -666,6 +666,14 @@ void drawEnemies() {
 				frameHeight = BOSSA2_DIE_frame_heights[frameIdx];
 				spriteData = BOSSA2_DIE_frames[frameIdx];
 			}
+			else if (enemies[i].enemyType == ENEMY_TYPE_BOSSA3) {
+				int frameIdx = enemies[i].animFrame;
+				if (frameIdx >= BOSSA3_DIE_FRAME_COUNT) frameIdx = BOSSA3_DIE_FRAME_COUNT - 1;
+				
+				frameWidth = BOSSA3_DIE_frame_widths[frameIdx];
+				frameHeight = BOSSA3_DIE_frame_heights[frameIdx];
+				spriteData = BOSSA3_DIE_frames[frameIdx];
+			}
 			else {
 				// Fallback for other bosses if they don't have death anims yet
 				frameWidth = BOSSA1_DIE_frame_widths[0];
@@ -688,8 +696,8 @@ void drawEnemies() {
 					break;
 				case ENEMY_TYPE_BOSSA3:
 					currentFrame = currentFrame % BOSSA3_ATTACK_FRAME_COUNT;
-					frameWidth = BOSSA3_ATTACK_FRAME_WIDTH;
-					frameHeight = BOSSA3_ATTACK_FRAME_HEIGHT;
+					frameWidth = BOSSA3_ATTACK_frame_widths[currentFrame];
+					frameHeight = BOSSA3_ATTACK_frame_heights[currentFrame];
 					spriteData = BOSSA3_ATTACK_frames[currentFrame];
 					break;
 				default:
@@ -1115,6 +1123,19 @@ void display() {
 					// Handle weapon firing - only fire once per click (not auto-fire)
 					if (K.fire && !K.firePressed) {
 						int targetEnemy = getEnemyInCrosshair(P.x, P.y, P.a, M.cos, M.sin);
+						
+						// Check range - if too far, treat as miss (pass -1)
+						if (targetEnemy >= 0) {
+							int dx = enemies[targetEnemy].x - P.x;
+							int dy = enemies[targetEnemy].y - P.y;
+							// Simple distance check (squared to avoid sqrt if possible, but range is linear. usage sqrt for correctness)
+							// Alternatively use dist = sqrt...
+							float dist = sqrt(dx*dx + dy*dy);
+							if (dist > getWeaponRange(weapon.currentWeapon)) {
+								targetEnemy = -1; // Too far
+							}
+						}
+						
 						if (fireWeapon(targetEnemy, T.fr1)) {
 							// Play weapon sound
 							playWeaponSound(weapon.currentWeapon);
@@ -1393,22 +1414,41 @@ void mouseClick(int button, int state, int x, int y) {
 void mouseMotion(int x, int y) {
 	if (!mouseEnabled || console.active || gamePaused || playerDead) return;
 	
-	// Calculate center of window
-	int centerX = GSLW / 2;
-	int centerY = GSLH / 2;
+	// Get actual window dimensions for correct centering
+	int winW = glutGet(GLUT_WINDOW_WIDTH);
+	int winH = glutGet(GLUT_WINDOW_HEIGHT);
+	int centerX = winW / 2;
+	int centerY = winH / 2;
 	
 	// Skip if mouse is at center (we just warped it there)
-	if (x == centerX && y == centerY) return;
+	if (abs(x - centerX) < 2 && abs(y - centerY) < 2) return;
+	
+	// Warmup check: Skip first few updates to prevent startup jump
+	static int warmup = 10;
+	if (warmup > 0) {
+		warmup--;
+		glutWarpPointer(centerX, centerY);
+		return;
+	}
 	
 	// Calculate mouse delta
 	int deltaX = x - centerX;
+	int deltaY = y - centerY;
 	
-	// Apply mouse sensitivity (higher = faster turning)
-	float sensitivity = 0.12f;
-	int angleChange = (int)(deltaX * sensitivity);
+	// Apply mouse sensitivity (Classic Doom feel)
+	float sensitivityX = 0.1f; 
 	
-	// Update player angle
-	P.a += angleChange;
+	// Accumulate angle change to prevent integer truncation on small movements
+	static float angleAccumulator = 0.0f;
+	angleAccumulator += deltaX * sensitivityX;
+	
+	// Apply integer part of rotation
+	int turn = (int)angleAccumulator;
+	if (turn != 0) {
+		P.a += turn;
+		angleAccumulator -= turn; // Keep fraction
+	}
+	
 	if (P.a < 0) P.a += 360;
 	if (P.a >= 360) P.a -= 360;
 	

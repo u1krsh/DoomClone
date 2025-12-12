@@ -162,6 +162,9 @@
     <ClInclude Include="textures\pistol_flash.h" />
     <ClInclude Include="textures\pistol_shooty.h" />
     <ClInclude Include="textures\pistol_stat.h" />
+    <ClInclude Include="textures\shotgun_flash.h" />
+    <ClInclude Include="textures\shotgun_reload.h" />
+    <ClInclude Include="textures\shotgun_stat.h" />
     <ClInclude Include="textures\TEXTURE_TEMPLATE.h" />
     <ClInclude Include="textures\T_00.h" />
     <ClInclude Include="textures\T_01.h" />
@@ -196,6 +199,7 @@
   </ItemGroup>
   <ItemGroup>
     <Media Include="sounds\guns\pistol\DSPISTOL.wav" />
+    <Media Include="sounds\guns\shotgun\DSSHOTGN.wav" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

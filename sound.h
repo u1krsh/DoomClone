@@ -12,7 +12,7 @@
 
 // Sound file paths
 #define SOUND_PISTOL "sounds/guns/pistol/DSPISTOL.wav"
-#define SOUND_SHOTGUN "sounds/guns/shotgun/DSHOTGN.wav"
+#define SOUND_SHOTGUN "sounds/guns/shotgun/DSSHOTGN.wav"
 #define SOUND_CHAINGUN "sounds/guns/chaingun/DCHGUN.wav"
 #define SOUND_PUNCH "sounds/guns/fist/DPUNCH.wav"
 

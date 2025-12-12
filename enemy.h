@@ -9,6 +9,7 @@
 #include "textures/BOSSA3_attack.h"
 #include "textures/BOSSA1_DIE.h"
 #include "textures/BOSSA2_DIE.h"
+#include "textures/BOSSA3_DIE.h"
 #include "projectile.h"
 
 
@@ -285,6 +286,7 @@ void updateEnemies(int playerX, int playerY, int playerZ, int currentTime) {
 			int dieFrames = BOSSA1_DIE_FRAME_COUNT; // Default to BOSSA1
 			if (enemies[i].enemyType == ENEMY_TYPE_BOSSA1) dieFrames = BOSSA1_DIE_FRAME_COUNT;
 			else if (enemies[i].enemyType == ENEMY_TYPE_BOSSA2) dieFrames = BOSSA2_DIE_FRAME_COUNT;
+			else if (enemies[i].enemyType == ENEMY_TYPE_BOSSA3) dieFrames = BOSSA3_DIE_FRAME_COUNT; // Added this line
 			
 			// Update Z to keep on ground (user requested slightly lower)
 			enemies[i].z = -3;

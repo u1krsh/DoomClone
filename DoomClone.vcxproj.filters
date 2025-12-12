@@ -161,6 +161,15 @@
     <ClInclude Include="textures\BOSSA1_DIE.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="textures\shotgun_flash.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\shotgun_reload.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\shotgun_stat.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="DoomClone.sln" />
@@ -196,6 +205,9 @@
   </ItemGroup>
   <ItemGroup>
     <Media Include="sounds\guns\pistol\DSPISTOL.wav">
+      <Filter>Header Files</Filter>
+    </Media>
+    <Media Include="sounds\guns\shotgun\DSSHOTGN.wav">
       <Filter>Header Files</Filter>
     </Media>
   </ItemGroup>

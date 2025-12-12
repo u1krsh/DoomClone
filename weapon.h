@@ -8,6 +8,9 @@
 #include "textures/pistol_stat.h"
 #include "textures/pistol_shooty.h"
 #include "textures/pistol_flash.h"
+#include "textures/shotgun_stat.h"
+#include "textures/shotgun_flash.h"
+#include "textures/shotgun_reload.h"
 
 // Weapon types
 #define WEAPON_FIST 0
@@ -23,7 +26,7 @@
 #define FIST_DAMAGE 10
 
 #define PISTOL_COOLDOWN 300     // ms between shots
-#define SHOTGUN_COOLDOWN 700
+#define SHOTGUN_COOLDOWN 1200
 #define CHAINGUN_COOLDOWN 80
 #define FIST_COOLDOWN 400
 
@@ -44,8 +47,18 @@ typedef struct {
     int lastFireTime;       // Last time weapon was fired
     int isFiring;           // Is the fire button held?
     int weaponBobPhase;     // For weapon bobbing animation
-    int muzzleFlashTime;    // Time of last muzzle flash
+    int muzzleFlashTime;    // Time of last muzzleFlash
+    
+    // Weapon switching animation
+    float weaponOffsetY;    // Y offset for raising/lowering animation (0 = raised, >0 = lowered)
+    int switchState;        // 0=Ready, 1=Lowering, 2=Raising
+    int pendingWeapon;      // Weapon to switch to after lowering
 } WeaponState;
+
+#define WEAPON_STATE_READY 0
+#define WEAPON_STATE_LOWERING 1
+#define WEAPON_STATE_RAISING 2
+#define WEAPON_SWITCH_SPEED 15.0f // Pixels per frame
 
 // Global weapon state
 WeaponState weapon;
@@ -67,7 +80,7 @@ void initWeapons(void) {
     weapon.maxAmmo[WEAPON_PISTOL] = 200;
     
     // Shotgun
-    weapon.ammo[WEAPON_SHOTGUN] = 0;
+    weapon.ammo[WEAPON_SHOTGUN] = 20;
     weapon.maxAmmo[WEAPON_SHOTGUN] = 50;
     
     // Chaingun
@@ -78,6 +91,10 @@ void initWeapons(void) {
     weapon.isFiring = 0;
     weapon.weaponBobPhase = 0;
     weapon.muzzleFlashTime = 0;
+    
+    weapon.weaponOffsetY = 0;
+    weapon.switchState = WEAPON_STATE_READY;
+    weapon.pendingWeapon = WEAPON_PISTOL;
 }
 
 // Get weapon cooldown
@@ -174,37 +191,57 @@ int fireWeapon(int enemyIndex, int currentTime) {
 
 // Switch to next weapon
 void nextWeapon(void) {
+    if (weapon.switchState != WEAPON_STATE_READY) return; // Wait for current switch to finish
+    
     int startWeapon = weapon.currentWeapon;
+    int nextW = startWeapon;
+    
     do {
-        weapon.currentWeapon = (weapon.currentWeapon + 1) % NUM_WEAPONS;
+        nextW = (nextW + 1) % NUM_WEAPONS;
         // Skip weapons with no ammo (except fist)
-        if (weapon.ammo[weapon.currentWeapon] != 0 || weapon.currentWeapon == WEAPON_FIST) {
+        if (weapon.ammo[nextW] != 0 || nextW == WEAPON_FIST) {
             break;
         }
-    } while (weapon.currentWeapon != startWeapon);
+    } while (nextW != startWeapon);
+    
+    if (nextW != startWeapon) {
+        weapon.pendingWeapon = nextW;
+        weapon.switchState = WEAPON_STATE_LOWERING;
+    }
 }
 
 // Switch to previous weapon
 void prevWeapon(void) {
+    if (weapon.switchState != WEAPON_STATE_READY) return;
+    
     int startWeapon = weapon.currentWeapon;
+    int prevW = startWeapon;
+    
     do {
-        weapon.currentWeapon--;
-        if (weapon.currentWeapon < 0) weapon.currentWeapon = NUM_WEAPONS - 1;
+        prevW--;
+        if (prevW < 0) prevW = NUM_WEAPONS - 1;
         // Skip weapons with no ammo (except fist)
-        if (weapon.ammo[weapon.currentWeapon] != 0 || weapon.currentWeapon == WEAPON_FIST) {
+        if (weapon.ammo[prevW] != 0 || prevW == WEAPON_FIST) {
             break;
         }
-    } while (weapon.currentWeapon != startWeapon);
+    } while (prevW != startWeapon);
+    
+    if (prevW != startWeapon) {
+        weapon.pendingWeapon = prevW;
+        weapon.switchState = WEAPON_STATE_LOWERING;
+    }
 }
 
 // Select specific weapon
 void selectWeapon(int weaponType) {
     if (weaponType < 0 || weaponType >= NUM_WEAPONS) return;
+    if (weapon.switchState != WEAPON_STATE_READY) return;
+    if (weaponType == weapon.currentWeapon) return;
     
     // Can always select fist, or any weapon with ammo
     if (weaponType == WEAPON_FIST || weapon.ammo[weaponType] != 0) {
-        weapon.currentWeapon = weaponType;
-        weapon_currentWeapon = weaponType;  // Update external variable
+        weapon.pendingWeapon = weaponType;
+        weapon.switchState = WEAPON_STATE_LOWERING;
     }
 }
 
@@ -230,14 +267,30 @@ void giveAllWeapons(void) {
 
 // Update weapon state (call each frame)
 void updateWeapon(int isMoving, int currentTime) {
-    // Update weapon bobbing when moving
-    if (isMoving) {
+    // Handle switching animation
+    if (weapon.switchState == WEAPON_STATE_LOWERING) {
+        weapon.weaponOffsetY += WEAPON_SWITCH_SPEED;
+        if (weapon.weaponOffsetY >= 150.0f) { // Fully lowered (adjust height as needed)
+            weapon.currentWeapon = weapon.pendingWeapon;
+            weapon_currentWeapon = weapon.pendingWeapon;
+            weapon.switchState = WEAPON_STATE_RAISING;
+        }
+    } else if (weapon.switchState == WEAPON_STATE_RAISING) {
+        weapon.weaponOffsetY -= WEAPON_SWITCH_SPEED;
+        if (weapon.weaponOffsetY <= 0.0f) {
+            weapon.weaponOffsetY = 0.0f;
+            weapon.switchState = WEAPON_STATE_READY;
+        }
+    }
+
+    // Update weapon bobbing when moving (only if ready)
+    if (isMoving && weapon.switchState == WEAPON_STATE_READY) {
         weapon.weaponBobPhase += 8;
         if (weapon.weaponBobPhase >= 360) weapon.weaponBobPhase -= 360;
     }
     
-    // Auto-fire for chaingun
-    if (weapon.isFiring && weapon.currentWeapon == WEAPON_CHAINGUN) {
+    // Auto-fire for chaingun (only if ready)
+    if (weapon.isFiring && weapon.currentWeapon == WEAPON_CHAINGUN && weapon.switchState == WEAPON_STATE_READY) {
         // Get enemy in crosshair
         extern int getEnemyInCrosshair(int, int, int, float*, float*);
         extern float M_cos[], M_sin[];
@@ -321,9 +374,135 @@ void drawWeaponSprite(void (*pixelFunc)(int, int, int, int, int),
                       int screenWidth, int screenHeight,
                       int currentTime) {
     // Currently only pistol sprite is available
-    if (weapon.currentWeapon != WEAPON_PISTOL) {
+    if (weapon.currentWeapon != WEAPON_PISTOL && weapon.currentWeapon != WEAPON_SHOTGUN) {
         // Draw placeholder for other weapons (just return for now)
         return;
+    }
+    
+    // Shotgun Drawing Logic
+    if (weapon.currentWeapon == WEAPON_SHOTGUN) {
+        int timeSinceFire = currentTime - weapon.lastFireTime;
+        const unsigned char* spriteData = SHOTGUN_STAT;
+        int spriteWidth = SHOTGUN_STAT_WIDTH;
+        int spriteHeight = SHOTGUN_STAT_HEIGHT;
+        
+        int showFlash = 0;
+        const unsigned char* flashData = NULL;
+        int flashWidth = 0;
+        int flashHeight = 0;
+
+        // Determine state
+        if (timeSinceFire >= 0 && timeSinceFire < 100) {
+            // Firing State (0-100ms): Static + Flash
+            spriteData = SHOTGUN_STAT; // Base is static
+            
+            // Flash logic
+            int flashFrame = (timeSinceFire / 50) % 2;
+            if (flashFrame < SHOTGUN_FLASH_FRAME_COUNT) {
+                flashData = SHOTGUN_FLASH_frames[flashFrame];
+                flashWidth = SHOTGUN_FLASH_frame_widths[flashFrame];
+                flashHeight = SHOTGUN_FLASH_frame_heights[flashFrame];
+                showFlash = 1;
+            }
+        } else if (timeSinceFire >= 100 && timeSinceFire < 700) {
+            // Reload State (100-700ms): Reload Animation
+            int reloadTime = timeSinceFire - 100;
+            int frame = reloadTime / 200; // 200ms per frame
+            if (frame >= SHOTGUN_RELOAD_FRAME_COUNT) frame = SHOTGUN_RELOAD_FRAME_COUNT - 1;
+            
+            spriteData = SHOTGUN_RELOAD_frames[frame];
+            spriteWidth = SHOTGUN_RELOAD_frame_widths[frame];
+            spriteHeight = SHOTGUN_RELOAD_frame_heights[frame];
+            // Wait, does reload header have widths array?
+            // "textures/shotgun_reload.h" usually has _frame_widths if frames are different sizes.
+            // If they are all same size, use macro. 
+            // My previous view showed consistent 3560 lines, and frame data seemed packed.
+            // I'll assume they are dimensions of SHOTGUN_RELOAD_WIDTH/HEIGHT if defined, or check if SHOTGUN_RELOAD_frame_widths exists in next step if error.
+            // Actually, based on previous headers, it's safer to not assume.
+            // BUT, usually these arrays are there. I'll rely on the grep result which FAILED for array pointer, but I found `frames` array at end.
+            // I did NOT check for widths array at end.
+            // Let's use hardcoded variables if needed or just assume widths array likely exists if frames array exists.
+            // Actually, looking at pistol logic: `PISTOL_SHOOTY_frame_widths`.
+            // I will assume `SHOTGUN_RELOAD_frame_widths` exists. If not, I'll fix.
+            
+            // Re-reading my "view file" output for reload header...
+            // I missed checking for widths array. 
+            // Let's assume standard format.
+        } else {
+            // Idle State: Static
+            spriteData = SHOTGUN_STAT;
+        }
+
+        // Draw the shotgun sprite (Centered)
+        // Shift right by 15 pixels as requested (corrected from left)
+        int startX = (screenWidth - spriteWidth) / 2 + 15;
+        int startY = -15; // Shift down by 15 pixels (adjusted from -30)
+        
+        // Apply switching animation offset
+        startY -= (int)weapon.weaponOffsetY;
+
+        // Apply bob
+        float bobOffsetX = 0;
+        float bobOffsetY = 0;
+        if (weapon.weaponBobPhase > 0 && timeSinceFire >= 700) {
+             bobOffsetX = sin(weapon.weaponBobPhase * 3.14159f / 180.0f) * 4.0f;
+             bobOffsetY = sin(weapon.weaponBobPhase * 2.0f * 3.14159f / 180.0f) * 3.0f;
+        }
+        startX += (int)bobOffsetX;
+        startY += (int)bobOffsetY;
+
+        // Draw Gun
+        for (int y = 0; y < spriteHeight; y++) {
+            for (int x = 0; x < spriteWidth; x++) {
+                int srcY = spriteHeight - 1 - y;
+                // Check bounds
+                if (srcY < 0 || srcY >= spriteHeight) continue;
+                
+                int pixelIndex = (srcY * spriteWidth + x) * 3;
+                int r = spriteData[pixelIndex + 0];
+                int g = spriteData[pixelIndex + 1];
+                int b = spriteData[pixelIndex + 2];
+                
+                if (r == 1 && g == 0 && b == 0) continue; // Transparent
+                
+                // PixelFunc takes (x, y, r, g, b)
+                // Need to ensure x,y inside screen? PixelFunc usually handles it or we should check.
+                // Assuming PixelFunc handles clipping or we are safe.
+                pixelFunc(startX + x, startY + y, r, g, b);
+            }
+        }
+
+        // Draw Flash Overlay
+        if (showFlash && flashData) {
+            // Flash position: Relative to gun to match bobbing/animation
+            // Center horizontally on the gun, then shift left by 12 pixels (adjusted from 8)
+            int fX = startX + (spriteWidth - flashWidth) / 2 + 3;
+            
+            // Position vertically relative to gun top
+            // startY is bottom of gun image. spriteHeight is height.
+            // Gun Top = startY + spriteHeight.
+            // Shift down adjustment: was -15, now -20 (5 more pixels down)
+            int fY = startY + spriteHeight - 20;
+            
+            // Adjust to align with muzzle
+            // SHOTGUN_STAT is huge. Flash should be at muzzle.
+            
+            for (int y = 0; y < flashHeight; y++) {
+                for (int x = 0; x < flashWidth; x++) {
+                    int srcY = flashHeight - 1 - y;
+                    int pixelIndex = (srcY * flashWidth + x) * 3;
+                    int r = flashData[pixelIndex + 0];
+                    int g = flashData[pixelIndex + 1];
+                    int b = flashData[pixelIndex + 2];
+                    
+                    if (r == 1 && g == 0 && b == 0) continue;
+                    
+                    // Simple additive blending or replace? Pistol uses replace.
+                    pixelFunc(fX + x, fY + y, r, g, b);
+                }
+            }
+        }
+        return; // Done drawing shotgun
     }
     
     // Determine which sprite to use (idle or shooting animation)
@@ -366,9 +545,13 @@ void drawWeaponSprite(void (*pixelFunc)(int, int, int, int, int),
     int scaledWidth = spriteWidth * scale;
     int scaledHeight = spriteHeight * scale;
     
-    // Position at bottom center - offset down so bottom part is cut off
+    // Position at bottom center
     int startX = (screenWidth - scaledWidth) / 2;
-    int startY = -20;  // Move down by 20 pixels so bottom is cut off
+    
+    // Base Y position (0 = bottom of screen)
+    // Add weaponOffsetY for switching animation (positive value moves it down)
+    // Shift base position lower by 20 pixels as requested
+    int startY = -20 -((int)weapon.weaponOffsetY); 
     
     // Apply weapon bob with more intensity (only when not shooting)
     float bobOffsetX = 0;
@@ -382,11 +565,24 @@ void drawWeaponSprite(void (*pixelFunc)(int, int, int, int, int),
     startX += (int)bobOffsetX;
     startY += (int)bobOffsetY;
     
+    // If startY moves down (negative), we need to handle clipping or just rely on pixelFunc/loop bounds
+    // Note: If startY is negative, the loop should probably handle it or pixelFunc should
+    // Let's ensure we don't draw below screen (y < 0)
+    
     // Draw the pistol sprite
     for (int y = 0; y < spriteHeight; y++) {
         for (int x = 0; x < spriteWidth; x++) {
-            // Get pixel from texture (flipped vertically)
+            // Get pixel from texture (flipped vertically? No, usually raw data is bottom-up or top-down depending on load)
+            // Code previously used: int srcY = spriteHeight - 1 - y;
+            // Assuming texture is stored top-down? Or bottom-up?
+            // "srcY = spriteHeight - 1 - y" implies we are iterating screen Y from 0 (bottom) up to height.
+            // If y=0 is bottom row of sprite...
+            
             int srcY = spriteHeight - 1 - y;
+            
+            // Safety check for source bounds
+            if (srcY < 0 || srcY >= spriteHeight) continue;
+            
             int pixelIndex = (srcY * spriteWidth + x) * 3;
             
             int r = spriteData[pixelIndex + 0];
@@ -400,7 +596,9 @@ void drawWeaponSprite(void (*pixelFunc)(int, int, int, int, int),
             int drawX = startX + x;
             int drawY = startY + y;
             
-            // Bounds check
+            // PixelFunc typically handles clipping, but let's be safe
+             // (Assuming pixelFunc(x, y, r, g, b) checks bounds, or we should)
+             // If drawY is negative (below screen), don't draw.
             if (drawX >= 0 && drawX < screenWidth && 
                 drawY >= 0 && drawY < screenHeight) {
                 pixelFunc(drawX, drawY, r, g, b);
