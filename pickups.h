@@ -21,7 +21,7 @@
 #define NUM_PICKUP_TYPES 11
 
 #define MAX_PICKUPS 64
-#define PICKUP_RADIUS 20         // Collection radius
+#define PICKUP_RADIUS 30         // Collection radius (Increased from 20)
 #define PICKUP_BOB_SPEED 4       // Floating animation speed
 #define PICKUP_BOB_HEIGHT 5      // Floating animation height
 #define PICKUP_RESPAWN_TIME 30000 // 30 seconds respawn
@@ -444,6 +444,63 @@ void drawPickups(void (*pixelFunc)(int, int, int, int, int),
              }
         }
 
+    }
+}
+
+// Debug drawing: Draw pickup hitboxes in 3D view
+void drawPickupDebugOverlay(void (*pixelFunc)(int, int, int, int, int), 
+                           int screenWidth, int screenHeight,
+                           int playerX, int playerY, int playerZ, int playerAngle,
+                           float* cosTable, float* sinTable,
+                           float* depthBuf) {
+    float CS = cosTable[playerAngle];
+    float SN = sinTable[playerAngle];
+    
+    for (int i = 0; i < MAX_PICKUPS; i++) {
+        if (!pickups[i].active || pickups[i].collected) continue;
+        
+        // Transform pickup position to camera space
+        int relX = pickups[i].x - playerX;
+        int relY = pickups[i].y - playerY;
+        
+        float camX = relX * CS - relY * SN;
+        float camY = relX * SN + relY * CS;
+        
+        // Calculate collision radius in screen space
+        int screenRadius = (int)(PICKUP_RADIUS * 200.0f / camY);
+        if (screenRadius < 1) screenRadius = 1;
+        
+        if (camY < 1.0f) continue; // Behind player
+        
+        int screenX = (int)(camX * 200.0f / camY + screenWidth / 2);
+        
+        // Check if visible
+        if (screenX + screenRadius < 0 || screenX - screenRadius >= screenWidth) continue;
+        
+        // Draw circle at floor level (approximate)
+        int floorZ = pickups[i].z - playerZ;
+        int screenY = (int)(floorZ * 200.0f / camY + screenHeight / 2);
+        
+        // Draw collision circle (simple 8 points or more)
+        for (int a = 0; a < 360; a += 30) {
+            float rad = a * 3.14159f / 180.0f;
+            int px = screenX + (int)(cos(rad) * screenRadius);
+            int py = screenY + (int)(sin(rad) * screenRadius * 0.3f); // Flattened circle for perspective
+            
+            if (px >= 0 && px < screenWidth && py >= 0 && py < screenHeight) {
+                pixelFunc(px, py, 0, 255, 0); // Green outline
+            }
+        }
+        
+        // Draw vertical centerline
+        int topZ = floorZ - 40; // Height of hitbox approx
+        int screenYTop = (int)(topZ * 200.0f / camY + screenHeight / 2);
+        
+        for (int y = screenYTop; y <= screenY; y++) {
+             if (screenX >= 0 && screenX < screenWidth && y >= 0 && y < screenHeight) {
+                 pixelFunc(screenX, y, 0, 255, 0);
+             }
+        }
     }
 }
 

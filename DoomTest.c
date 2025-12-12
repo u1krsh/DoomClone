@@ -3,14 +3,7 @@
 #include <GL/glut.h>
 #include <math.h>
 
-#define res 1 //resolution scale
-#define SH 240*res //screen height
-#define SW 320*res //screen width
-#define HSH SH/2 //half screen height
-#define HSW SW/2 //half screen width
-#define pixelScale  4/res //open gl pixel size
-#define GSLW SW*pixelScale //open gl window width
-#define GSLH SH*pixelScale //open gl window height
+#include "data_types.h"
 #define SCRPOS_H GSLH / 8 
 #define SCRPOS_W GSLW / 5
 #define M_PI 3.14159265358979323846  /* pi */
@@ -47,6 +40,7 @@
 
 // Sound system
 #include "sound.h"
+#include "projectile.h"
 
 // Global pause state
 int gamePaused = 0;
@@ -61,61 +55,19 @@ int numWall = 0;                          //number of walls
 #define PLAYER_RADIUS 8  // Player collision radius
 
 
-typedef struct {
-	int fr1, fr2; // these are frame 1 and 2 for a constant frame rate
-}time;
-time T;
+DoomTime T;
 
-typedef struct
-{
-	int w, s, a, d;           //move up, down, left, rigth
-	int sl, sr;             //strafe left, right 
-	int m;                 //move up, down, look up, down
-	int fire;              //fire weapon
-	int firePressed;       //track if fire was already pressed (for single shot)
-}keys;
 keys K;
 
-typedef struct {
-	float cos[360];   //cos and sin values
-	float sin[360];
-
-}math;
 math M;
 
-typedef struct {
-	int x, y, z; //position
-	int a;// angle of rotation
-	int l; // variable to look up and down
-}player;
 player P;
 
-typedef struct {
-	int x1, y1;//bottom line point 1
-	int x2, y2;//bootom line point 2
-	int c;// wall color 
-	int wt, u, v; //wall texture and u/v tile
-	int shade;             //shade of the wall
-}walls;
 walls W[256];
 
-typedef struct {
-	int ws, we; // wall number start and end
-	int z1, z2; // height from bottom to top
-	int x, y; // center of sector
-	int d; // sorting drawing order
-	int c1, c2; //bottom and top color
-	int surf[SW]; // to gold points for surface
-	int surface; //is there a surface to draw
-	int ss, st; //surface texture, surface scale
-
-}sectors;
 sectors S[128];
 
-typedef struct {
-	int w, h;                             //texture width/height
-	const unsigned char* name;           //texture name
-}TextureMaps; TextureMaps Textures[64]; //increase for more textures  
+TextureMaps Textures[64]; //increase for more textures  
 
 // Depth buffer for sprite rendering
 float depthBuffer[SW];
@@ -166,6 +118,8 @@ void load()
 	int num_loaded_enemies = 0;
 	if (fscanf(fp, "%i", &num_loaded_enemies) != EOF) {
 		initEnemies(); // Reset enemies
+		initWeapons(); // Reset weapons (ammo, selection)
+		initProjectiles(); // Clear any existing projectiles
 		if (num_loaded_enemies > MAX_ENEMIES) num_loaded_enemies = MAX_ENEMIES;
 		numEnemies = num_loaded_enemies;
 
@@ -631,10 +585,14 @@ void draw3D() {
 	// This way, enemy sprites will occlude the wireframes properly
 	if (isFPSDisplayEnabled()) {
 		drawEnemyDebugOverlay(pixel, SW, SH, P.x, P.y, P.z, P.a, M.cos, M.sin, depthBuffer);
+		drawPickupDebugOverlay(pixel, SW, SH, P.x, P.y, P.z, P.a, M.cos, M.sin, depthBuffer);
 	}
 	
 	// Draw enemies as sprites (after walls and debug wireframes)
 	drawEnemies();
+
+	// Draw projectiles (after enemies)
+	drawProjectiles();
 }
 
 // Draw enemies as billboarded sprites (supports multiple enemy types)
@@ -689,43 +647,98 @@ void drawEnemies() {
 		int currentFrame = enemies[i].animFrame;
 		
 		// Select sprite based on enemy type
-		switch (enemies[i].enemyType) {
-			case ENEMY_TYPE_BOSSA1:
-				currentFrame = currentFrame % BOSSA1_FRAME_COUNT;
-				frameWidth = BOSSA1_frame_widths[currentFrame];
-				frameHeight = BOSSA1_frame_heights[currentFrame];
-				if (currentFrame == 0) spriteData = BOSSA1_frame_0;
-				else if (currentFrame == 1) spriteData = BOSSA1_frame_1;
-				else if (currentFrame == 2) spriteData = BOSSA1_frame_2;
-				else spriteData = BOSSA1_frame_3;
-				break;
+		// Select sprite based on state and enemy type
+		if (enemies[i].state == ENEMY_STATE_DYING || enemies[i].state == ENEMY_STATE_DEAD) {
+			if (enemies[i].enemyType == ENEMY_TYPE_BOSSA1) {
+				// Clamp frame to max count for safety
+				int frameIdx = enemies[i].animFrame;
+				if (frameIdx >= BOSSA1_DIE_FRAME_COUNT) frameIdx = BOSSA1_DIE_FRAME_COUNT - 1;
 				
-			case ENEMY_TYPE_BOSSA2:
-				currentFrame = currentFrame % BOSSA2_FRAME_COUNT;
-				frameWidth = BOSSA2_frame_widths[currentFrame];
-				frameHeight = BOSSA2_frame_heights[currentFrame];
-				if (currentFrame == 0) spriteData = BOSSA2_frame_0;
-				else if (currentFrame == 1) spriteData = BOSSA2_frame_1;
-				else spriteData = BOSSA2_frame_2;
-				break;
+				frameWidth = BOSSA1_DIE_frame_widths[frameIdx];
+				frameHeight = BOSSA1_DIE_frame_heights[frameIdx];
+				spriteData = BOSSA1_DIE_frames[frameIdx];
+			} 
+			else if (enemies[i].enemyType == ENEMY_TYPE_BOSSA2) {
+				int frameIdx = enemies[i].animFrame;
+				if (frameIdx >= BOSSA2_DIE_FRAME_COUNT) frameIdx = BOSSA2_DIE_FRAME_COUNT - 1;
 				
-			case ENEMY_TYPE_BOSSA3:
-				currentFrame = currentFrame % BOSSA3_FRAME_COUNT;
-				frameWidth = BOSSA3_frame_widths[currentFrame];
-				frameHeight = BOSSA3_frame_heights[currentFrame];
-				if (currentFrame == 0) spriteData = BOSSA3_frame_0;
-				else if (currentFrame == 1) spriteData = BOSSA3_frame_1;
-				else if (currentFrame == 2) spriteData = BOSSA3_frame_2;
-				else spriteData = BOSSA3_frame_3;
-				break;
-				
-			default:
-				// Fallback to BOSSA1
-				currentFrame = 0;
-				frameWidth = BOSSA1_frame_widths[0];
-				frameHeight = BOSSA1_frame_heights[0];
-				spriteData = BOSSA1_frame_0;
-				break;
+				frameWidth = BOSSA2_DIE_frame_widths[frameIdx];
+				frameHeight = BOSSA2_DIE_frame_heights[frameIdx];
+				spriteData = BOSSA2_DIE_frames[frameIdx];
+			}
+			else {
+				// Fallback for other bosses if they don't have death anims yet
+				frameWidth = BOSSA1_DIE_frame_widths[0];
+				frameHeight = BOSSA1_DIE_frame_heights[0];
+				spriteData = BOSSA1_DIE_frames[0]; 
+			}
+		} else if (enemies[i].state == ENEMY_STATE_ATTACKING) {
+			switch (enemies[i].enemyType) {
+				case ENEMY_TYPE_BOSSA1:
+					currentFrame = currentFrame % BOSSA1_ATTACK_FRAME_COUNT;
+					frameWidth = BOSSA1_ATTACK_frame_widths[currentFrame];
+					frameHeight = BOSSA1_ATTACK_frame_heights[currentFrame];
+					spriteData = BOSSA1_ATTACK_frames[currentFrame];
+					break;
+				case ENEMY_TYPE_BOSSA2:
+					currentFrame = currentFrame % BOSSA2_ATTACK_FRAME_COUNT;
+					frameWidth = BOSSA2_ATTACK_frame_widths[currentFrame];
+					frameHeight = BOSSA2_ATTACK_frame_heights[currentFrame];
+					spriteData = BOSSA2_ATTACK_frames[currentFrame];
+					break;
+				case ENEMY_TYPE_BOSSA3:
+					currentFrame = currentFrame % BOSSA3_ATTACK_FRAME_COUNT;
+					frameWidth = BOSSA3_ATTACK_FRAME_WIDTH;
+					frameHeight = BOSSA3_ATTACK_FRAME_HEIGHT;
+					spriteData = BOSSA3_ATTACK_frames[currentFrame];
+					break;
+				default:
+					currentFrame = currentFrame % BOSSA1_ATTACK_FRAME_COUNT;
+					frameWidth = BOSSA1_ATTACK_frame_widths[currentFrame];
+					frameHeight = BOSSA1_ATTACK_frame_heights[currentFrame];
+					spriteData = BOSSA1_ATTACK_frames[currentFrame];
+					break;
+			}
+		} else {
+			// Movement/Idle animations
+			switch (enemies[i].enemyType) {
+				case ENEMY_TYPE_BOSSA1:
+					currentFrame = currentFrame % BOSSA1_FRAME_COUNT;
+					frameWidth = BOSSA1_frame_widths[currentFrame];
+					frameHeight = BOSSA1_frame_heights[currentFrame];
+					if (currentFrame == 0) spriteData = BOSSA1_frame_0;
+					else if (currentFrame == 1) spriteData = BOSSA1_frame_1;
+					else if (currentFrame == 2) spriteData = BOSSA1_frame_2;
+					else spriteData = BOSSA1_frame_3;
+					break;
+					
+				case ENEMY_TYPE_BOSSA2:
+					currentFrame = currentFrame % BOSSA2_FRAME_COUNT;
+					frameWidth = BOSSA2_frame_widths[currentFrame];
+					frameHeight = BOSSA2_frame_heights[currentFrame];
+					if (currentFrame == 0) spriteData = BOSSA2_frame_0;
+					else if (currentFrame == 1) spriteData = BOSSA2_frame_1;
+					else spriteData = BOSSA2_frame_2;
+					break;
+					
+				case ENEMY_TYPE_BOSSA3:
+					currentFrame = currentFrame % BOSSA3_FRAME_COUNT;
+					frameWidth = BOSSA3_frame_widths[currentFrame];
+					frameHeight = BOSSA3_frame_heights[currentFrame];
+					if (currentFrame == 0) spriteData = BOSSA3_frame_0;
+					else if (currentFrame == 1) spriteData = BOSSA3_frame_1;
+					else if (currentFrame == 2) spriteData = BOSSA3_frame_2;
+					else spriteData = BOSSA3_frame_3;
+					break;
+					
+				default:
+					// Fallback to BOSSA1
+					currentFrame = 0;
+					frameWidth = BOSSA1_frame_widths[0];
+					frameHeight = BOSSA1_frame_heights[0];
+					spriteData = BOSSA1_frame_0;
+					break;
+			}
 		}
 		
 		if (spriteData == NULL) continue;
@@ -1068,6 +1081,7 @@ void display() {
 			// Update effects
 			updateScreenShake(T.fr1);
 			updateParticles(T.fr1);
+			updateProjectiles(T.fr1);
 			
 			// Normal game rendering
 			clearBackground();
@@ -1095,6 +1109,9 @@ void display() {
 					// Update pickups
 					updatePickups(P.x, P.y, P.z, T.fr1);
 					
+					// Update projectiles
+					updateProjectiles(T.fr1);
+					
 					// Handle weapon firing - only fire once per click (not auto-fire)
 					if (K.fire && !K.firePressed) {
 						int targetEnemy = getEnemyInCrosshair(P.x, P.y, P.a, M.cos, M.sin);
@@ -1120,6 +1137,9 @@ void display() {
 				}
 				
 				draw3D();
+				
+				// Draw projectiles
+				drawProjectiles();
 				
 				// Draw pickups
 				drawPickups(pixel, SW, SH, P.x, P.y, P.z, P.a, M.cos, M.sin, depthBuffer, T.fr1);
@@ -1435,6 +1455,9 @@ void init() {
 	
 	// Initialize HUD
 	initHUD();
+
+	// Initialize Projectiles
+	initProjectiles();
 	
 	// Initialize weapon system
 	initWeapons();
@@ -1450,6 +1473,9 @@ void init() {
 	
 	// Initialize sound system
 	initSound();
+	
+	// Initialize projectiles
+	initProjectiles();
 	
 	// Add different enemy types in the world for variety
 	addEnemyType(200, 200, 20, ENEMY_TYPE_BOSSA1);

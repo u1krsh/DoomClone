@@ -146,6 +146,8 @@
     <ClInclude Include="textures\bl_key.h" />
     <ClInclude Include="textures\BOSSA1.h" />
     <ClInclude Include="textures\BOSSA1_attack.h" />
+    <ClInclude Include="textures\BOSSA1_DIE.h" />
+    <ClInclude Include="textures\BOSSA1_proj.h" />
     <ClInclude Include="textures\BOSSA1_walk.h" />
     <ClInclude Include="textures\BOSSA1_walk_new.h" />
     <ClInclude Include="textures\BOSSA2_attack.h" />

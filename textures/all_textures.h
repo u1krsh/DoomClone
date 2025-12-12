@@ -22,6 +22,11 @@
 #include "BOSSA1_walk.h"
 #include "BOSSA2_walk.h"
 #include "BOSSA3_walk.h"
+#include "BOSSA1_attack.h"
+#include "BOSSA2_attack.h"
+#include "BOSSA3_attack.h"
+#include "BOSSA1_proj.h"
+#include "BOSSA1_DIE.h"
 
 // Pickup textures
 #include "health.h"

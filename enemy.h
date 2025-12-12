@@ -4,17 +4,25 @@
 #include "textures/BOSSA1_walk.h"
 #include "textures/BOSSA2_walk.h"
 #include "textures/BOSSA3_walk.h"
+#include "textures/BOSSA1_attack.h"
+#include "textures/BOSSA2_attack.h"
+#include "textures/BOSSA3_attack.h"
+#include "textures/BOSSA1_DIE.h"
+#include "textures/BOSSA2_DIE.h"
+#include "projectile.h"
+
+
 
 // Enemy constants
 #define MAX_ENEMIES 32
-#define ENEMY_DETECTION_RADIUS 200  // Distance at which enemy starts following player
-#define ENEMY_ATTACK_RADIUS 40      // Distance at which enemy attacks
+#define ENEMY_DETECTION_RADIUS 500  // Distance at which enemy starts following player
+#define ENEMY_ATTACK_RADIUS 250      // Distance at which enemy attacks
 #define ENEMY_SPEED 2               // Movement speed of enemies
 #define ENEMY_COLLISION_RADIUS 10   // Collision radius for enemies
 
 // Animation constants
 #define ENEMY_ANIM_SPEED 150        // Milliseconds per frame
-#define ENEMY_ATTACK_COOLDOWN 1000  // Milliseconds between attacks
+#define ENEMY_ATTACK_COOLDOWN 1500  // Milliseconds between attacks
 #define ENEMY_HURT_DURATION 200     // Milliseconds to show hurt state
 #define ENEMY_DEATH_DURATION 500    // Milliseconds for death animation
 
@@ -273,15 +281,36 @@ void updateEnemies(int playerX, int playerY, int playerZ, int currentTime) {
 		
 		// Handle death state
 		if (enemies[i].state == ENEMY_STATE_DYING) {
-			if (currentTime - enemies[i].stateStartTime >= ENEMY_DEATH_DURATION) {
-				enemies[i].state = ENEMY_STATE_DEAD;
-				enemies[i].active = 0;
-				enemiesKilled++;
+			// Animate death
+			int dieFrames = BOSSA1_DIE_FRAME_COUNT; // Default to BOSSA1
+			if (enemies[i].enemyType == ENEMY_TYPE_BOSSA1) dieFrames = BOSSA1_DIE_FRAME_COUNT;
+			else if (enemies[i].enemyType == ENEMY_TYPE_BOSSA2) dieFrames = BOSSA2_DIE_FRAME_COUNT;
+			
+			// Update Z to keep on ground (user requested slightly lower)
+			enemies[i].z = -3;
+
+			if (currentTime - enemies[i].lastAnimTime >= 150) { // 150ms per frame
+				enemies[i].animFrame++;
+				enemies[i].lastAnimTime = currentTime;
+				
+				if (enemies[i].animFrame >= dieFrames) {
+					enemies[i].state = ENEMY_STATE_DEAD;
+					enemies[i].animFrame = dieFrames - 1; // Keep last frame
+					// Keep active = 1 so it draws
+					enemiesKilled++;
+					
+					// Set final Z
+					enemies[i].z = -3;
+				}
 			}
 			continue;
 		}
 		
-		if (enemies[i].state == ENEMY_STATE_DEAD) continue;
+		if (enemies[i].state == ENEMY_STATE_DEAD) {
+			// Ensure it stays on the ground
+			enemies[i].z = -3;
+			continue;
+		}
 		
 		// Handle hurt state recovery (but don't skip movement!)
 		if (enemies[i].state == ENEMY_STATE_HURT) {
@@ -298,11 +327,29 @@ void updateEnemies(int playerX, int playerY, int playerZ, int currentTime) {
 			// Attack player (only if not hurt)
 			if (enemies[i].state != ENEMY_STATE_HURT) {
 				enemies[i].state = ENEMY_STATE_ATTACKING;
+				
+				// Update attack animation
+				int frameCount = 0;
+				if (enemies[i].enemyType == ENEMY_TYPE_BOSSA1) frameCount = BOSSA1_ATTACK_FRAME_COUNT;
+				else if (enemies[i].enemyType == ENEMY_TYPE_BOSSA2) frameCount = BOSSA2_ATTACK_FRAME_COUNT;
+				else frameCount = BOSSA3_ATTACK_FRAME_COUNT;
+				
+				if (currentTime - enemies[i].lastAnimTime >= ENEMY_ANIM_SPEED) {
+					enemies[i].animFrame = (enemies[i].animFrame + 1) % frameCount;
+					enemies[i].lastAnimTime = currentTime;
+				}
 			}
 			
 			// Check attack cooldown
 			if (currentTime - enemies[i].lastAttackTime >= ENEMY_ATTACK_COOLDOWN) {
-				damagePlayer(enemies[i].damage, currentTime);
+				// Spawn projectile based on enemy type
+				float angle = atan2((float)(playerX - enemies[i].x), (float)(playerY - enemies[i].y));
+				int projType = PROJ_TYPE_PLASMA;
+				if (enemies[i].enemyType == ENEMY_TYPE_BOSSA2) projType = PROJ_TYPE_BULLET;
+				else if (enemies[i].enemyType == ENEMY_TYPE_BOSSA3) projType = PROJ_TYPE_SHELL;
+				
+				spawnProjectile((float)enemies[i].x, (float)enemies[i].y, (float)enemies[i].z + 15, angle, projType, currentTime);
+
 				enemies[i].lastAttackTime = currentTime;
 			}
 		}

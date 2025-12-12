@@ -11,6 +11,118 @@ from tkinter import simpledialog
 from PIL import Image, ImageDraw, ImageTk
 import os
 import struct
+import copy
+
+class ToolTip:
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tooltip = None
+        self.widget.bind("<Enter>", self.enter)
+        self.widget.bind("<Leave>", self.leave)
+
+    def enter(self, event=None):
+        x, y, _, _ = self.widget.bbox("insert")
+        x += self.widget.winfo_rootx() + 25
+        y += self.widget.winfo_rooty() + 25
+
+        self.tooltip = tk.Toplevel(self.widget)
+        self.tooltip.wm_overrideredirect(True)
+        self.tooltip.wm_geometry(f"+{x}+{y}")
+
+        label = tk.Label(self.tooltip, text=self.text, background="#ffffe0", relief="solid", borderwidth=1,
+                         font=("Segoe UI", 9, "normal"))
+        label.pack(ipadx=5, ipady=2)
+
+    def leave(self, event=None):
+        if self.tooltip:
+            self.tooltip.destroy()
+            self.tooltip = None
+
+class UndoManager:
+    def __init__(self, editor, max_history=50):
+        self.editor = editor
+        self.history = []
+        self.redo_stack = []
+        self.max_history = max_history
+        
+    def push_state(self):
+        """Save current state to history"""
+        # Deep copy frames
+        state = []
+        for frame in self.editor.frames:
+            state.append({
+                'image': frame['image'].copy(),
+                'duration': frame['duration']
+            })
+            
+        self.history.append({
+            'frames': state,
+            'current_frame': self.editor.current_frame
+        })
+        
+        # Limit history size
+        if len(self.history) > self.max_history:
+            self.history.pop(0)
+            
+        # Clear redo stack when new action occurs
+        self.redo_stack.clear()
+        
+    def undo(self):
+        """Undo last action"""
+        if not self.history:
+            return
+            
+        # Save current state to redo
+        current_state = []
+        for frame in self.editor.frames:
+            current_state.append({
+                'image': frame['image'].copy(),
+                'duration': frame['duration']
+            })
+            
+        self.redo_stack.append({
+            'frames': current_state,
+            'current_frame': self.editor.current_frame
+        })
+        
+        # Restore previous state
+        state = self.history.pop()
+        self.editor.frames = state['frames']
+        self.editor.current_frame = state['current_frame']
+        
+        # Refresh UI
+        self.editor.update_info()
+        self.editor.draw_canvas()
+        self.editor.draw_timeline()
+        
+    def redo(self):
+        """Redo previously undone action"""
+        if not self.redo_stack:
+            return
+            
+        # Save current state to history (without clearing redo)
+        current_state = []
+        for frame in self.editor.frames:
+            current_state.append({
+                'image': frame['image'].copy(),
+                'duration': frame['duration']
+            })
+            
+        self.history.append({
+            'frames': current_state,
+            'current_frame': self.editor.current_frame
+        })
+        
+        # Restore redo state
+        state = self.redo_stack.pop()
+        self.editor.frames = state['frames']
+        self.editor.current_frame = state['current_frame']
+        
+        # Refresh UI
+        self.editor.update_info()
+        self.editor.draw_canvas()
+        self.editor.draw_timeline()
 
 class ModernTextureEditor:
     def __init__(self, root):
@@ -19,21 +131,23 @@ class ModernTextureEditor:
         self.root.geometry("1400x900")
         self.root.configure(bg='#1e1e1e')
         
-        # Set modern theme colors (Oracular Style)
+        # Modern Theme (Cyberpunk/Pro)
         self.colors = {
-            'bg_dark': '#19191c',      # Colors.BG_DARK
-            'bg_medium': '#2d2d30',    # Colors.BG_MEDIUM
-            'bg_light': '#3f3f46',     # Colors.BG_LIGHT
-            'accent': '#007acc',       # Colors.ACCENT
-            'accent_hover': '#1c97ea', # Colors.BUTTON_HOVER
-            'text': '#dcdce1',         # Colors.TEXT
-            'text_bright': '#ffffff',  # Colors.VERTEX
+            'bg_dark': '#09090b',      # Deep black
+            'bg_medium': '#18181b',    # Dark gray
+            'bg_light': '#27272a',     # Lighter gray
+            'accent': '#6366f1',       # Indigo/Blurple
+            'accent_hover': '#818cf8', # Lighter Indigo
+            'text': '#a1a1aa',         # Muted text
+            'text_bright': '#f4f4f5',  # Bright text
+            'border': '#3f3f46',       # Border color
+            'active_selection': '#4f46e5', # Stronger accent
             'success': '#4ec9b0',
             'warning': '#ce9178',
             'error': '#f48771',
-            'panel_bg': '#252528',     # Colors.PANEL_BG
-            'grid_dark': '#232326',    # Colors.GRID_DARK
-            'grid_light': '#37373a'    # Colors.GRID_LIGHT
+            'panel_bg': '#18181b',     
+            'grid_dark': '#121214',
+            'grid_light': '#27272a'
         }
         
         # Data
@@ -48,12 +162,21 @@ class ModernTextureEditor:
         self.canvas_offset_x = 0
         self.canvas_offset_y = 0
         
+        # Innovative Features State
+        self.symmetry_x = False
+        self.symmetry_y = False
+        self.tiling_preview = False
+        self.onion_skin = False
+        
         # Drawing state
         self.is_drawing = False
         self.last_x = None
         self.last_y = None
         self.start_x = None
         self.start_y = None
+        
+        # Undo Manager
+        self.undo_manager = UndoManager(self)
         
         # Palette
         self.palette = [
@@ -83,9 +206,15 @@ class ModernTextureEditor:
         title_frame = tk.Frame(top_bar, bg=self.colors['bg_dark'])
         title_frame.pack(side=tk.LEFT, padx=20)
         
-        tk.Label(title_frame, text="DoomClone Texture Editor", 
+        tk.Label(title_frame, text="DoomClone Texture Editor (Pro)", 
                 font=('Segoe UI', 16, 'bold'), bg=self.colors['bg_dark'], 
                 fg=self.colors['text_bright']).pack(side=tk.LEFT, padx=10)
+
+        # Help Button
+        tk.Button(title_frame, text="?", command=self.show_help,
+                 bg=self.colors['bg_light'], fg=self.colors['text_bright'],
+                 font=('Segoe UI', 10, 'bold'), relief=tk.FLAT,
+                 width=3, cursor='hand2').pack(side=tk.LEFT, padx=5)
         
         # Quick action buttons
         btn_frame = tk.Frame(top_bar, bg=self.colors['bg_dark'])
@@ -140,6 +269,10 @@ class ModernTextureEditor:
         self.root.bind('<Control-n>', lambda e: self.new_texture(64, 64))
         self.root.bind('<Control-o>', lambda e: self.load_image())
         self.root.bind('<Control-s>', lambda e: self.save_texture())
+        self.root.bind('<Control-z>', lambda e: self.undo_manager.undo())
+        self.root.bind('<Control-y>', lambda e: self.undo_manager.redo())
+        self.root.bind('<Control-z>', lambda e: self.undo_manager.undo())
+        self.root.bind('<Control-y>', lambda e: self.undo_manager.redo())
         
         # Tools
         self.root.bind('p', lambda e: self.set_tool("pencil"))
@@ -164,13 +297,48 @@ class ModernTextureEditor:
         
         return btn
         
+    def create_tool_button(self, parent, text, tool):
+        """Helper to create tool button with correct binding"""
+        btn = tk.Button(parent, text=text,
+                       bg=self.colors['bg_light'], fg=self.colors['text'],
+                       activebackground=self.colors['accent_hover'],
+                       activeforeground=self.colors['text_bright'],
+                       font=('Segoe UI', 9), relief=tk.FLAT, anchor=tk.W,
+                       padx=10, pady=8, cursor='hand2', bd=0)
+        btn.pack(fill=tk.X, pady=2)
+        
+        # Explicit binding to avoid lambda loop issues
+        def on_click(t=tool):
+            self.set_tool(t)
+            
+        btn.config(command=on_click)
+        self.tool_buttons[tool] = btn
+        
+        # Add tooltip
+        try:
+            shortcut = text.split('(')[1].replace(')', '')
+            ToolTip(btn, f"Select {text.split(' ')[0]} Tool (Shortcut: {shortcut})")
+        except:
+            pass
+            
+        # Hover effect
+        def on_enter(e):
+            if self.tool != tool:
+                btn.config(bg=self.colors['border'])
+        def on_leave(e):
+            if self.tool != tool:
+                btn.config(bg=self.colors['bg_light'])
+                
+        btn.bind('<Enter>', on_enter)
+        btn.bind('<Leave>', on_leave)
+
     def setup_tools_panel(self, parent):
         """Setup tools and palette panel"""
         
         # Tools section
-        tools_label = tk.Label(parent, text="Tools", font=('Segoe UI', 12, 'bold'),
+        tools_label = tk.Label(parent, text="TOOLS", font=('Segoe UI', 10, 'bold'),
                               bg=self.colors['bg_medium'], fg=self.colors['text_bright'])
-        tools_label.pack(pady=10, padx=10, anchor=tk.W)
+        tools_label.pack(pady=(15, 10), padx=10, anchor=tk.W)
         
         tools_frame = tk.Frame(parent, bg=self.colors['bg_medium'])
         tools_frame.pack(fill=tk.X, padx=10)
@@ -187,13 +355,8 @@ class ModernTextureEditor:
         
         self.tool_buttons = {}
         for text, tool in tools:
-            btn = tk.Button(tools_frame, text=text, command=lambda t=tool: self.set_tool(t),
-                          bg=self.colors['bg_light'], fg=self.colors['text'],
-                          font=('Segoe UI', 9), relief=tk.FLAT, anchor=tk.W,
-                          padx=10, pady=8, cursor='hand2')
-            btn.pack(fill=tk.X, pady=2)
-            self.tool_buttons[tool] = btn
-        
+            self.create_tool_button(tools_frame, text, tool)
+            
         self.set_tool("pencil")
         
         # Brush size
@@ -290,7 +453,34 @@ class ModernTextureEditor:
         tk.Checkbutton(canvas_header, text="Grid", variable=self.grid_var,
                       command=self.toggle_grid, bg=self.colors['bg_medium'],
                       fg=self.colors['text'], selectcolor=self.colors['bg_light'],
-                      font=('Segoe UI', 9), cursor='hand2').pack(side=tk.RIGHT, padx=10)
+                      font=('Segoe UI', 9), cursor='hand2').pack(side=tk.RIGHT, padx=5)
+                      
+        # Symmetry Toggles
+        self.sym_x_var = tk.BooleanVar(value=False)
+        self.sym_y_var = tk.BooleanVar(value=False)
+        
+        tk.Checkbutton(canvas_header, text="Sym X", variable=self.sym_x_var,
+                      command=self.toggle_symmetry, bg=self.colors['bg_medium'],
+                      fg=self.colors['text'], selectcolor=self.colors['bg_light'],
+                      font=('Segoe UI', 9), cursor='hand2').pack(side=tk.RIGHT, padx=5)
+                      
+        tk.Checkbutton(canvas_header, text="Sym Y", variable=self.sym_y_var,
+                      command=self.toggle_symmetry, bg=self.colors['bg_medium'],
+                      fg=self.colors['text'], selectcolor=self.colors['bg_light'],
+                      font=('Segoe UI', 9), cursor='hand2').pack(side=tk.RIGHT, padx=5)
+                      
+        # Tiling Preview
+        self.tiling_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(canvas_header, text="Tile", variable=self.tiling_var,
+                       command=self.toggle_tiling, bg=self.colors['bg_medium'],
+                       fg=self.colors['text'], selectcolor=self.colors['bg_light'],
+                       font=('Segoe UI', 9), cursor='hand2').pack(side=tk.RIGHT, padx=5)
+        # Onion Skin
+        self.onion_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(canvas_header, text="Onion", variable=self.onion_var,
+                       command=self.toggle_onion, bg=self.colors['bg_medium'],
+                       fg=self.colors['text'], selectcolor=self.colors['bg_light'],
+                       font=('Segoe UI', 9), cursor='hand2').pack(side=tk.RIGHT, padx=5)
         
         # Canvas container with scrollbars
         canvas_container = tk.Frame(parent, bg=self.colors['bg_light'])
@@ -324,6 +514,51 @@ class ModernTextureEditor:
         px, py = self.canvas_to_pixel(event.x, event.y)
         self.update_status(px, py)
         
+        # Brush Preview
+        self.canvas.delete("cursor_preview")
+        
+        if self.tool in ["pencil", "eraser", "line", "rect", "circle"]:
+            brush_size = int(self.brush_slider.get())
+            zoom = self.zoom
+            
+            # Snap to pixel grid
+            cx = self.canvas_offset_x + px * zoom
+            cy = self.canvas_offset_y + py * zoom
+            
+            # Size on screen
+            size = brush_size * zoom
+            
+            # Draw outline
+            # Center of the pixel + offset
+            x1 = cx - (brush_size // 2) * zoom
+            y1 = cy - (brush_size // 2) * zoom
+            x2 = x1 + size
+            y2 = y1 + size
+            
+            # Contrast color
+            self.canvas.create_rectangle(x1, y1, x2, y2, outline="#ffffff", dash=(2, 2), tag="cursor_preview")
+            self.canvas.create_rectangle(x1-1, y1-1, x2+1, y2+1, outline="#000000", dash=(2, 2), tag="cursor_preview")
+
+    def generate_noise(self):
+        """Generate random noise"""
+        self.undo_manager.push_state()
+        import random
+        img = self.frames[self.current_frame]['image']
+        pixels = img.load()
+        
+        for y in range(img.height):
+            for x in range(img.width):
+                if random.random() > 0.7:
+                    # Variation
+                    r, g, b = pixels[x, y]
+                    noise = random.randint(-40, 40)
+                    r = max(0, min(255, r + noise))
+                    g = max(0, min(255, g + noise))
+                    b = max(0, min(255, b + noise))
+                    pixels[x, y] = (r, g, b)
+                    
+        self.draw_canvas()
+
     def update_status(self, x=None, y=None):
         """Update status bar"""
         status = f"Tool: {self.tool.title()} | Zoom: {self.zoom}x"
@@ -382,6 +617,20 @@ class ModernTextureEditor:
         self.duration_entry.pack(fill=tk.X)
         self.duration_entry.insert(0, "100")
         self.duration_entry.bind('<KeyRelease>', self.update_duration)
+
+        # Effects Section
+        effects_frame = tk.Frame(parent, bg=self.colors['bg_medium'])
+        effects_frame.pack(fill=tk.X, padx=10, pady=(20, 0))
+        
+        tk.Label(effects_frame, text="Effects & Generators", font=('Segoe UI', 9, 'bold'),
+                bg=self.colors['bg_medium'], fg=self.colors['text']).pack(anchor=tk.W, pady=(0, 5))
+                
+        eff_grid = tk.Frame(effects_frame, bg=self.colors['bg_medium'])
+        eff_grid.pack(fill=tk.X)
+        
+        self.create_property_button(eff_grid, "Add Noise", self.generate_noise).grid(row=0, column=0, sticky='ew', padx=2, pady=2)
+        
+        eff_grid.grid_columnconfigure(0, weight=1)
         
         # Clear canvas button
         tk.Button(parent, text="Clear Canvas", command=self.clear_canvas,
@@ -400,10 +649,17 @@ class ModernTextureEditor:
 
     def create_property_button(self, parent, text, command):
         """Create a property panel button"""
-        return tk.Button(parent, text=text, command=command,
+        btn = tk.Button(parent, text=text, command=command,
                         bg=self.colors['bg_light'], fg=self.colors['text'],
+                        activebackground=self.colors['accent_hover'],
+                        activeforeground=self.colors['text_bright'],
                         font=('Segoe UI', 9), relief=tk.FLAT,
-                        padx=10, pady=8, cursor='hand2')
+                        padx=10, pady=8, cursor='hand2', bd=0)
+                        
+        # Hover effect
+        btn.bind('<Enter>', lambda e: btn.config(bg=self.colors['border']))
+        btn.bind('<Leave>', lambda e: btn.config(bg=self.colors['bg_light']))
+        return btn
         
     def setup_timeline(self, parent):
         """Setup the timeline"""
@@ -430,9 +686,15 @@ class ModernTextureEditor:
         if hasattr(self, 'tool_buttons'):
             for t, btn in self.tool_buttons.items():
                 if t == tool:
-                    btn.config(bg=self.colors['accent'], fg=self.colors['text_bright'])
+                    # Active State: Bright accent background, white text, bold
+                    btn.config(bg=self.colors['active_selection'], 
+                             fg=self.colors['text_bright'],
+                             font=('Segoe UI', 9, 'bold'))
                 else:
-                    btn.config(bg=self.colors['bg_light'], fg=self.colors['text'])
+                    # Inactive State: Dark background, muted text, normal
+                    btn.config(bg=self.colors['bg_light'], 
+                             fg=self.colors['text'],
+                             font=('Segoe UI', 9))
         
         # Update cursor
         if hasattr(self, 'canvas'):
@@ -493,6 +755,21 @@ class ModernTextureEditor:
     def toggle_grid(self):
         """Toggle grid display"""
         self.grid_enabled = self.grid_var.get()
+        self.draw_canvas()
+        
+    def toggle_symmetry(self):
+        """Toggle symmetry"""
+        self.symmetry_x = self.sym_x_var.get()
+        self.symmetry_y = self.sym_y_var.get()
+        
+    def toggle_tiling(self):
+        """Toggle tiling preview"""
+        self.tiling_preview = self.tiling_var.get()
+        self.draw_canvas()
+        
+    def toggle_onion(self):
+        """Toggle onion skinning"""
+        self.onion_skin = self.onion_var.get()
         self.draw_canvas()
         
     def new_texture(self, width, height):
@@ -762,6 +1039,7 @@ class ModernTextureEditor:
         
     def add_frame(self):
         """Add a new frame"""
+        self.undo_manager.push_state()
         current_img = self.frames[self.current_frame]['image']
         new_img = current_img.copy()
         self.frames.append({'image': new_img, 'duration': 100})
@@ -775,6 +1053,8 @@ class ModernTextureEditor:
         if len(self.frames) <= 1:
             messagebox.showwarning("Cannot Delete", "Must have at least one frame")
             return
+            
+        self.undo_manager.push_state()
         self.frames.pop(self.current_frame)
         self.current_frame = min(self.current_frame, len(self.frames) - 1)
         self.update_info()
@@ -783,6 +1063,7 @@ class ModernTextureEditor:
         
     def duplicate_frame(self):
         """Duplicate current frame"""
+        self.undo_manager.push_state()
         current_img = self.frames[self.current_frame]['image']
         current_duration = self.frames[self.current_frame]['duration']
         new_img = current_img.copy()
@@ -834,6 +1115,32 @@ class ModernTextureEditor:
             return
             
         self.canvas.delete("all")
+        
+        # Onion Skinning
+        if self.onion_skin and self.current_frame > 0:
+            prev_img = self.frames[self.current_frame - 1]['image']
+            
+            # Create faint version
+            # Convert to RGBA
+            ghost = prev_img.convert("RGBA")
+            data = ghost.getdata()
+            new_data = []
+            for item in data:
+                # Set alpha to 100
+                new_data.append((item[0], item[1], item[2], 100))
+            ghost.putdata(new_data)
+            
+            z_ghost = ghost.resize((prev_img.width * self.zoom, prev_img.height * self.zoom), Image.NEAREST)
+            self.ghost_photo = ImageTk.PhotoImage(z_ghost)
+            
+            # Calculate pos for ghost (assuming same size)
+            canvas_w = self.canvas.winfo_width()
+            canvas_h = self.canvas.winfo_height()
+            gx = (canvas_w - z_ghost.width) // 2
+            gy = (canvas_h - z_ghost.height) // 2
+            
+            self.canvas.create_image(gx, gy, image=self.ghost_photo, anchor=tk.NW)
+            
         img = self.frames[self.current_frame]['image']
         
         # Create zoomed image
@@ -850,16 +1157,29 @@ class ModernTextureEditor:
         
         # Display image
         self.photo = ImageTk.PhotoImage(zoomed)
-        self.canvas.create_image(x, y, image=self.photo, anchor=tk.NW)
+        
+        if self.tiling_preview:
+            # Draw 3x3 tiling
+            w, h = zoomed.width, zoomed.height
+            for row in range(-1, 2):
+                for col in range(-1, 2):
+                    self.canvas.create_image(x + col * w, y + row * h, image=self.photo, anchor=tk.NW)
+            
+            # Draw border around center
+            self.canvas.create_rectangle(x, y, x + w, y + h, outline=self.colors['accent'], width=2)
+        else:
+            self.canvas.create_image(x, y, image=self.photo, anchor=tk.NW)
         
         # Draw grid
         if self.grid_enabled and self.zoom >= 4:
             for gx in range(img.width + 1):
                 x_pos = x + gx * self.zoom
-                self.canvas.create_line(x_pos, y, x_pos, y + zoomed.height, fill='#555555', width=1)
+                self.canvas.create_line(x_pos, y, x_pos, y + zoomed.height, 
+                                      fill=self.colors['grid_light'], width=1)
             for gy in range(img.height + 1):
                 y_pos = y + gy * self.zoom
-                self.canvas.create_line(x, y_pos, x + zoomed.width, y_pos, fill='#555555', width=1)
+                self.canvas.create_line(x, y_pos, x + zoomed.width, y_pos, 
+                                      fill=self.colors['grid_light'], width=1)
                 
     def draw_timeline(self):
         """Draw the timeline"""
@@ -932,6 +1252,11 @@ class ModernTextureEditor:
         self.start_x = px
         self.start_y = py
         
+        # KEY: Save state before drawing starts
+        # But only for tools that modify the canvas immediately or start a drag
+        if self.tool != "picker":
+            self.undo_manager.push_state()
+            
         if self.tool in ["pencil", "eraser"]:
             self.draw_point(px, py)
         elif self.tool == "fill":
@@ -988,6 +1313,17 @@ class ModernTextureEditor:
         color = (0, 0, 0) if self.tool == "eraser" else self.current_color
         
         draw.line([x0, y0, x1, y1], fill=color, width=brush_size)
+        
+        if self.symmetry_x:
+            w = img.width
+            draw.line([w-1-x0, y0, w-1-x1, y1], fill=color, width=brush_size)
+        if self.symmetry_y:
+            h = img.height
+            draw.line([x0, h-1-y0, x1, h-1-y1], fill=color, width=brush_size)
+        if self.symmetry_x and self.symmetry_y:
+            w, h = img.width, img.height
+            draw.line([w-1-x0, h-1-y0, w-1-x1, h-1-y1], fill=color, width=brush_size)
+            
         self.draw_canvas()
         
     def draw_rectangle(self, x0, y0, x1, y1):
@@ -1002,6 +1338,17 @@ class ModernTextureEditor:
         bottom = max(y0, y1)
         
         draw.rectangle([left, top, right, bottom], fill=self.current_color)
+        
+        if self.symmetry_x:
+            w = img.width
+            draw.rectangle([w-1-left, top, w-1-right, bottom], fill=self.current_color)
+        if self.symmetry_y:
+            h = img.height
+            draw.rectangle([left, h-1-top, right, h-1-bottom], fill=self.current_color)
+        if self.symmetry_x and self.symmetry_y:
+            w, h = img.width, img.height
+            draw.rectangle([w-1-left, h-1-top, w-1-right, h-1-bottom], fill=self.current_color)
+            
         self.draw_canvas()
         
     def draw_circle(self, x0, y0, x1, y1):
@@ -1036,6 +1383,31 @@ class ModernTextureEditor:
             self.current_color = img.getpixel((x, y))
             color_hex = '#%02x%02x%02x' % self.current_color
             self.color_display.config(bg=color_hex)
+
+    def show_help(self):
+        """Show help dialog"""
+        help_text = """
+        Keyboard Shortcuts:
+        
+        Drawing:
+        P - Pencil
+        E - Eraser
+        F - Flood Fill
+        K - Color Picker
+        L - Line Tool
+        R - Rectangle Tool
+        C - Circle Tool
+        
+        General:
+        Ctrl+Z - Undo
+        Ctrl+Y - Redo
+        Ctrl+S - Save Project
+        Ctrl+O - Open Image
+        Ctrl+N - New Texture
+        
+        Mouse Wheel - Zoom In/Out
+        """
+        messagebox.showinfo("Help & Shortcuts", help_text)
 
 if __name__ == "__main__":
     root = tk.Tk()

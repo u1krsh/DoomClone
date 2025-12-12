@@ -2,10 +2,12 @@
 #define BOSSA1_ATTACK_H
 
 #define BOSSA1_ATTACK_FRAME_COUNT 4
-#define BOSSA1_ATTACK_FRAME_WIDTH 65
-#define BOSSA1_ATTACK_FRAME_HEIGHT 70
 #define BOSSA1_ATTACK_ANIM_AVAILABLE 1
 
+static const int BOSSA1_ATTACK_frame_widths[4] = { 65, 69, 53, 50 };
+static const int BOSSA1_ATTACK_frame_heights[4] = { 70, 70, 64, 72 };
+
+// Frame 0: 65x70
 static const unsigned char BOSSA1_ATTACK_frame_0[] = {
       1,   0,   0,   1,   0,   0,   1,   0,   0,  95, 207,  87,  83, 175,  71,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,  75, 159,  63,   1,   0,   0,   1,   0,   0, 
      67, 147,  55,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,  91,  91,  91, 
@@ -389,6 +391,7 @@ static const unsigned char BOSSA1_ATTACK_frame_0[] = {
      19,  19,  19,   1,   0,   0
 };
 
+// Frame 1: 69x70
 static const unsigned char BOSSA1_ATTACK_frame_1[] = {
       1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0, 
       1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0, 
@@ -795,6 +798,7 @@ static const unsigned char BOSSA1_ATTACK_frame_1[] = {
      47,  47,  47,  47,  47,  47,  39,  39,  39,  39,  39,  39,  35,  35,  35,   1,   0,   0
 };
 
+// Frame 2: 53x64
 static const unsigned char BOSSA1_ATTACK_frame_2[] = {
       1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0, 
       1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,  59,  59,  59,  59,  59,  59, 187,  87,  87, 191,  91,  91, 167,  63,  63,   1,   0,   0,   1,   0,   0,   1,   0,   0, 
@@ -1081,6 +1085,7 @@ static const unsigned char BOSSA1_ATTACK_frame_2[] = {
       1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0
 };
 
+// Frame 3: 50x72
 static const unsigned char BOSSA1_ATTACK_frame_3[] = {
       1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0, 
       1,   0,   0,   1,   0,   0,   1,   0,   0,   1,   0,   0, 175,  71,  71, 199,  99,  99, 231, 143, 143, 199,  99,  99, 175,  71,  71,   1,   0,   0,   1,   0,   0,   1,   0,   0, 
@@ -1392,6 +1397,6 @@ static const unsigned char* BOSSA1_ATTACK_frames[] = {
     BOSSA1_ATTACK_frame_3
 };
 
-static const int BOSSA1_ATTACK_frame_durations[] = {100, 100, 100, 100};
-#define BOSSA1_ATTACK_FRAME_MS 100
+static const int BOSSA1_ATTACK_frame_durations[] = {150, 150, 150, 150};
+#define BOSSA1_ATTACK_FRAME_MS 150
 #endif // BOSSA1_ATTACK_H

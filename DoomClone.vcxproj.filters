@@ -155,6 +155,12 @@
     <ClInclude Include="textures\health.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="textures\BOSSA1_proj.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textures\BOSSA1_DIE.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="DoomClone.sln" />
