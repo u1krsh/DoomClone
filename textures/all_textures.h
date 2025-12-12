@@ -23,4 +23,9 @@
 #include "BOSSA2_walk.h"
 #include "BOSSA3_walk.h"
 
+// Pickup textures
+#include "health.h"
+#include "armour.h"
+#include "bl_key.h"
+
 #endif // ALL_TEXTURES_H

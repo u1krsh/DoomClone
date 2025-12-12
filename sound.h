@@ -12,9 +12,9 @@
 
 // Sound file paths
 #define SOUND_PISTOL "sounds/guns/pistol/DSPISTOL.wav"
-#define SOUND_SHOTGUN "sounds/DSHOTGN.wav"
-#define SOUND_CHAINGUN "sounds/DCHGUN.wav"
-#define SOUND_PUNCH "sounds/DPUNCH.wav"
+#define SOUND_SHOTGUN "sounds/guns/shotgun/DSHOTGN.wav"
+#define SOUND_CHAINGUN "sounds/guns/chaingun/DCHGUN.wav"
+#define SOUND_PUNCH "sounds/guns/fist/DPUNCH.wav"
 
 // Sound enabled flag
 static int soundEnabled = 1;

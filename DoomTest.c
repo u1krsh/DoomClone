@@ -50,6 +50,7 @@
 
 // Global pause state
 int gamePaused = 0;
+int hasBlueKey = 0; // Inventory flag
 
 int numText = NUM_TEXTURES - 1;  // Use macro from all_textures.h (max texture index)
 
@@ -338,7 +339,7 @@ void clearBackground() {
 	}
 }
 
-void clipBehindPlayer(int* x1, int* y1, int* z1, int x2, int y2, int z2) {
+void clipBehindPlayer(int* x1, int* y1, int* z1, int x2, int y2, int z2, float* u1, float u2) {
 	float da = *y1;
 	float db = y2;
 	float d = da - db; if (da == 0) { d = 1; }
@@ -346,6 +347,9 @@ void clipBehindPlayer(int* x1, int* y1, int* z1, int x2, int y2, int z2) {
 	*x1 = *x1 + s * (x2 - (*x1));
 	*y1 = *y1 + s * (y2 - (*y1)); if (*y1 == 0) { *y1 = 1; }// prevents divide by 0
 	*z1 = *z1 + s * (z2 - (*z1));
+    if (u1 != NULL) {
+        *u1 = *u1 + s * (u2 - (*u1));
+    }
 }
 
 
@@ -354,7 +358,8 @@ int dist(int x1, int y1, int x2, int y2) {
 	return distance;
 }
 
-void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int frontBack) {
+// Updated drawWall with perspective correct texture mapping and texture clipping
+void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int frontBack, float d1, float d2, float s0, float s1) {
 	int wt = W[w].wt;
 
 	int x, y;
@@ -369,13 +374,16 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 	int x1_orig = x1;
 	int x2_orig = x2;
 
-	// Get current texture data (handles animation)
-	int texWidth = 0, texHeight = 0;
+    // Perspective correction preparation
+    float iz1 = 1.0f / d1; // 1/z at left edge
+    float iz2 = 1.0f / d2; // 1/z at right edge
+    
+    // Get texture width first to calculate max u
+    int texWidth = 0, texHeight = 0;
 	const unsigned char* texData = NULL;
-	
+
 	#if defined(WALL57_ANIM_AVAILABLE) && WALL57_ANIM_AVAILABLE == 1
-	if (wt == NUM_TEXTURES - 2) {  // WALL57 is second-to-last
-		// Animated texture WALL57
+	if (wt == NUM_TEXTURES - 2) {
 		int t = glutGet(GLUT_ELAPSED_TIME);
 		int frame = (t / WALL57_FRAME_MS) % WALL57_FRAME_COUNT;
 		texWidth = WALL57_FRAME_WIDTH;
@@ -385,10 +393,9 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 	else
 	#endif
 	#if defined(WALL58_ANIM_AVAILABLE) && WALL58_ANIM_AVAILABLE == 1
-	if (wt == NUM_TEXTURES - 1) {  // WALL58 is last
-		// Animated texture WALL58
+	if (wt == NUM_TEXTURES - 1) {
 		int t = glutGet(GLUT_ELAPSED_TIME);
-		int frame = (t / 150) % WALL58_FRAME_COUNT;  // 150ms per frame
+		int frame = (t / 150) % WALL58_FRAME_COUNT;
 		texWidth = WALL58_FRAME_WIDTH;
 		texHeight = WALL58_FRAME_HEIGHT;
 		if (frame == 0) texData = WALL58_frame_0;
@@ -398,45 +405,32 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 	else
 	#endif
 	{
-		// Regular texture
 		texWidth = Textures[wt].w;
 		texHeight = Textures[wt].h;
 		texData = Textures[wt].name;
 	}
 
+    float total_u = texWidth * W[w].u;
+    float uz1 = (s0 * total_u) * iz1; // u/z at left
+    float uz2 = (s1 * total_u) * iz2; // u/z at right
+
 	// Calculate dynamic shading based on wall angle relative to player view
-	// Get wall angle in world space (in degrees)
 	float dx_wall = (float)(W[w].x2 - W[w].x1);
 	float dy_wall = (float)(W[w].y2 - W[w].y1);
-	float wallAngle = atan2f(dy_wall, dx_wall) * 57.2958f; // 180/pi = 57.2958
+	float wallAngle = atan2f(dy_wall, dx_wall) * 57.2958f; 
 	if (wallAngle < 0) { wallAngle += 360.0f; }
 	
-	// Calculate angle difference between player view and wall normal
-	// Wall normal is perpendicular to the wall (add 90 degrees)
 	float wallNormal = wallAngle + 90.0f;
 	if (wallNormal >= 360.0f) { wallNormal -= 360.0f; }
 	
-	// Calculate angle difference (how much the wall faces the player)
 	float angleDiff = wallNormal - (float)P.a;
-	
-	// Normalize to -180 to 180 range
 	while (angleDiff > 180.0f) { angleDiff -= 360.0f; }
 	while (angleDiff < -180.0f) { angleDiff += 360.0f; }
-	
-	// Convert to 0-180 range (we only care about magnitude)
 	if (angleDiff < 0) { angleDiff = -angleDiff; }
 	
-	// Calculate shade based on angle (0 = facing player directly, 180 = perpendicular)
-	// Walls facing the player get less shade, perpendicular walls get more shade
-	float shadeFactor = angleDiff / 180.0f; // 0.0 to 1.0
-	
-	// Apply smooth curve for more natural shading
-	shadeFactor = shadeFactor * shadeFactor; // Square for smoother transition
-	
-	// Calculate final shade value (0-90 range for compatibility)
+	float shadeFactor = angleDiff / 180.0f;
+	shadeFactor = shadeFactor * shadeFactor;
 	int dynamicShade = (int)(shadeFactor * 90.0f);
-	
-	// Clamp to ensure valid range
 	if (dynamicShade < 0) { dynamicShade = 0; }
 	if (dynamicShade > 90) { dynamicShade = 90; }
 
@@ -451,12 +445,22 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 		int y1 = dyb * (x - xs + 0.5) / dx + b1; //y bottom point 
 		int y2 = dyt * (x - xs + 0.5) / dx + t1;
 
-		// Calculate horizontal texture coordinate using original unclipped coordinates
-		float ht = ((float)(x - x1_orig) / (float)(x2_orig - x1_orig)) * texWidth * W[w].u;
-		
+        // Perspective Correct Interpolation
+        // Calculate t (0.0 to 1.0) across the ORIGINAL wall span
+        float t_step = (float)(x - x1_orig) / (float)(x2_orig - x1_orig);
+        
+        // Interpolate 1/z
+        float iz = iz1 + (iz2 - iz1) * t_step;
+        
+        // Interpolate u/z
+        float uz = uz1 + (uz2 - uz1) * t_step;
+        
+        // Recover u
+        float ht = uz / iz;
+
 		// Clamp ht to prevent out-of-bounds access
 		if (ht < 0) ht = 0;
-		if (ht >= texWidth * W[w].u) ht = texWidth * W[w].u - 0.001f;
+		if (ht >= total_u) ht = total_u - 0.001f;
 		
 		int tx = ((int)ht) % texWidth;
 
@@ -479,22 +483,22 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 			if (wall_height <= 0) continue;
 
 			for (y = y1; y < y2; y++) {
-				// Calculate vertical texture coordinate using original unclipped coordinates
+				// Vertical perspective correction?
+                // Vertical is usually linear in screen space for walls (constant Z per vertical slice)
+                // So the original affine interpolation for y is actually correct for vertical mapping
+                // because for a vertical wall strip, depth is constant!
 				float vt = ((float)(y - y1_orig) / (float)wall_height) * texHeight * W[w].v;
 				
-				// Clamp vt to prevent out-of-bounds access
 				if (vt < 0) vt = 0;
 				if (vt >= texHeight * W[w].v) vt = texHeight * W[w].v - 0.001f;
 				
 				int ty = ((int)vt) % texHeight;
 
-				// Clamp texture coordinates to valid range
 				if (tx < 0) tx = 0;
 				if (tx >= texWidth) tx = texWidth - 1;
 				if (ty < 0) ty = 0;
 				if (ty >= texHeight) ty = texHeight - 1;
 
-				// Flip vertically and get pixel from texture
 				int pixelN = (texHeight - ty - 1) * 3 * texWidth + tx * 3;
 				
 				// Bounds check for pixel index
@@ -571,14 +575,21 @@ void draw3D() {
 
 				if (wy[0] < 1 && wy[1] < 1) { continue; }
 
+                // Texture coefficients (0.0 to 1.0)
+                float u0 = 0.0f; // Start U ratio
+                float u1 = 1.0f; // End U ratio
+                if (frontBack == 1) { // If backface swapped
+                    u0 = 1.0f; u1 = 0.0f;
+                }
+
 				if (wy[0] < 1) {
-					clipBehindPlayer(&wx[0], &wy[0], &wz[0], wx[1], wy[1], wz[1]);
-					clipBehindPlayer(&wx[2], &wy[2], &wz[2], wx[3], wy[3], wz[3]);
+					clipBehindPlayer(&wx[0], &wy[0], &wz[0], wx[1], wy[1], wz[1], &u0, u1);
+					clipBehindPlayer(&wx[2], &wy[2], &wz[2], wx[3], wy[3], wz[3], NULL, 0); // Don't need to update U again
 				}
 
 				if (wy[1] < 1) {
-					clipBehindPlayer(&wx[1], &wy[1], &wz[1], wx[0], wy[0], wz[0]);
-					clipBehindPlayer(&wx[3], &wy[3], &wz[3], wx[2], wy[2], wz[2]);
+					clipBehindPlayer(&wx[1], &wy[1], &wz[1], wx[0], wy[0], wz[0], &u1, u0);
+					clipBehindPlayer(&wx[3], &wy[3], &wz[3], wx[2], wy[2], wz[2], NULL, 0);
 				}
 
 				// Store depth information
@@ -605,7 +616,8 @@ void draw3D() {
 					}
 				}
 
-				drawWall(wx[0], wx[1], wy[0], wy[1], wy[2], wy[3], s, w, frontBack);
+
+				drawWall(wx[0], wx[1], wy[0], wy[1], wy[2], wy[3], s, w, frontBack, depth0, depth1, u0, u1);
 			}
 			// Prevent division by zero for sectors with no walls
 			int wallCount = S[s].we - S[s].ws;
@@ -1371,8 +1383,8 @@ void mouseMotion(int x, int y) {
 	// Calculate mouse delta
 	int deltaX = x - centerX;
 	
-	// Apply mouse sensitivity (adjust as needed)
-	float sensitivity = 0.15f;
+	// Apply mouse sensitivity (higher = faster turning)
+	float sensitivity = 0.12f;
 	int angleChange = (int)(deltaX * sensitivity);
 	
 	// Update player angle
@@ -1446,16 +1458,7 @@ void init() {
 	addEnemyType(300, 150, 20, ENEMY_TYPE_BOSSA1);
 	addEnemyType(250, 400, 20, ENEMY_TYPE_BOSSA2);
 	
-	// Add pickups around the level
-	addPickup(PICKUP_HEALTH_SMALL, 100, 100, 20, 1);
-	addPickup(PICKUP_HEALTH_LARGE, 250, 250, 20, 1);
-	addPickup(PICKUP_ARMOR_SMALL, 180, 150, 20, 1);
-	addPickup(PICKUP_ARMOR_LARGE, 350, 200, 20, 1);
-	addPickup(PICKUP_AMMO_CLIP, 120, 200, 20, 1);
-	addPickup(PICKUP_AMMO_SHELLS, 280, 350, 20, 0);
-	addPickup(PICKUP_AMMO_BULLETS, 320, 280, 20, 1);
-	addPickup(PICKUP_BERSERK, 400, 400, 20, 0);
-	addPickup(PICKUP_SPEED, 150, 280, 20, 0);
+	// Pickups are now loaded from level.h
 
 	// Initialize texture 0 (128x128 - raw RGB format)
 	Textures[0].w = T_00_WIDTH;

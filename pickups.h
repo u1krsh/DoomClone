@@ -17,7 +17,8 @@
 #define PICKUP_BERSERK 7         // 2x fist damage for 30 seconds
 #define PICKUP_INVULN 8          // Invulnerability for 15 seconds
 #define PICKUP_SPEED 9           // 1.5x speed for 20 seconds
-#define NUM_PICKUP_TYPES 10
+#define PICKUP_KEY_BLUE 10       // Blue Key
+#define NUM_PICKUP_TYPES 11
 
 #define MAX_PICKUPS 64
 #define PICKUP_RADIUS 20         // Collection radius
@@ -29,6 +30,21 @@
 #define BERSERK_DURATION 30000
 #define INVULN_DURATION 15000
 #define SPEED_DURATION 20000
+
+// Pickup sprite definition
+typedef struct {
+    int animated;
+    int frameCount;
+    int frameTime; // ms per frame
+    const unsigned char** frames;   // Array of pointers to frame data
+    const int* widths;              // Array of widths
+    const int* heights;             // Array of heights
+    const unsigned char* staticTexture; // Fallback or static texture
+    int staticWidth;
+    int staticHeight;
+} PickupDef;
+
+PickupDef pickupDefs[NUM_PICKUP_TYPES];
 
 // Pickup structure
 typedef struct {
@@ -52,48 +68,46 @@ Pickup pickups[MAX_PICKUPS];
 int numPickups = 0;
 ActivePowerups powerups = {0, 0, 0};
 
-// Get pickup color for rendering
-void getPickupColor(int type, int* r, int* g, int* b) {
-    switch (type) {
-        case PICKUP_HEALTH_SMALL:
-        case PICKUP_HEALTH_LARGE:
-            *r = 255; *g = 50; *b = 50;   // Red
-            break;
-        case PICKUP_ARMOR_SMALL:
-        case PICKUP_ARMOR_LARGE:
-            *r = 50; *g = 100; *b = 255;  // Blue
-            break;
-        case PICKUP_AMMO_CLIP:
-        case PICKUP_AMMO_SHELLS:
-        case PICKUP_AMMO_BULLETS:
-            *r = 255; *g = 200; *b = 50;  // Yellow/Gold
-            break;
-        case PICKUP_BERSERK:
-            *r = 255; *g = 0; *b = 128;   // Magenta
-            break;
-        case PICKUP_INVULN:
-            *r = 0; *g = 255; *b = 200;   // Cyan
-            break;
-        case PICKUP_SPEED:
-            *r = 0; *g = 255; *b = 0;     // Green
-            break;
-        default:
-            *r = 255; *g = 255; *b = 255;
+// Initialize pickup definitions (map types to textures)
+void initPickupDefs() {
+    // defaults
+    for(int i=0; i<NUM_PICKUP_TYPES; i++) {
+        pickupDefs[i].animated = 0;
+        pickupDefs[i].staticTexture = NULL;
     }
-}
 
-// Get pickup size for rendering
-int getPickupSize(int type) {
-    switch (type) {
-        case PICKUP_HEALTH_LARGE:
-        case PICKUP_ARMOR_LARGE:
-        case PICKUP_BERSERK:
-        case PICKUP_INVULN:
-        case PICKUP_SPEED:
-            return 12;
-        default:
-            return 8;
-    }
+    // Health Large (Animated)
+    pickupDefs[PICKUP_HEALTH_LARGE].animated = 1;
+    pickupDefs[PICKUP_HEALTH_LARGE].frameCount = HEALTH_FRAME_COUNT;
+    pickupDefs[PICKUP_HEALTH_LARGE].frameTime = HEALTH_FRAME_MS;
+    pickupDefs[PICKUP_HEALTH_LARGE].frames = (const unsigned char**)HEALTH_frames;
+    pickupDefs[PICKUP_HEALTH_LARGE].widths = HEALTH_frame_widths;
+    pickupDefs[PICKUP_HEALTH_LARGE].heights = HEALTH_frame_heights;
+
+    // Armor Large (Animated)
+    pickupDefs[PICKUP_ARMOR_LARGE].animated = 1;
+    pickupDefs[PICKUP_ARMOR_LARGE].frameCount = ARMOUR_FRAME_COUNT;
+    pickupDefs[PICKUP_ARMOR_LARGE].frameTime = ARMOUR_FRAME_MS;
+    pickupDefs[PICKUP_ARMOR_LARGE].frames = (const unsigned char**)ARMOUR_frames;
+    pickupDefs[PICKUP_ARMOR_LARGE].widths = ARMOUR_frame_widths;
+    pickupDefs[PICKUP_ARMOR_LARGE].heights = ARMOUR_frame_heights;
+
+    // Blue Key (Animated)
+    pickupDefs[PICKUP_KEY_BLUE].animated = 1;
+    pickupDefs[PICKUP_KEY_BLUE].frameCount = BL_KEY_FRAME_COUNT;
+    pickupDefs[PICKUP_KEY_BLUE].frameTime = BL_KEY_FRAME_MS;
+    pickupDefs[PICKUP_KEY_BLUE].frames = (const unsigned char**)BL_KEY_frames;
+    pickupDefs[PICKUP_KEY_BLUE].widths = BL_KEY_frame_widths;
+    pickupDefs[PICKUP_KEY_BLUE].heights = BL_KEY_frame_heights;
+
+    // For others, we might want fallbacks or reusable sprites
+    // (In a full implementation, we'd map small health, ammo etc too)
+    // For now, mapping Small Health to Large Health sprite as placeholder if needed, 
+    // or just leave them blank (will be invisible? or need fallback rendering?)
+    // Let's use Large Health sprite for Small Health for now but maybe scale it?
+    // Sprite scaling happens in draw routine.
+    pickupDefs[PICKUP_HEALTH_SMALL] = pickupDefs[PICKUP_HEALTH_LARGE];
+    pickupDefs[PICKUP_ARMOR_SMALL] = pickupDefs[PICKUP_ARMOR_LARGE];
 }
 
 // Initialize pickup system
@@ -106,6 +120,8 @@ void initPickups(void) {
     powerups.berserkEndTime = 0;
     powerups.invulnEndTime = 0;
     powerups.speedEndTime = 0;
+
+    initPickupDefs();
 }
 
 // Add a pickup to the world
@@ -133,6 +149,7 @@ int canPickup(int type) {
     extern int playerHealth, playerMaxHealth;
     extern int playerArmor, playerMaxArmor;
     extern WeaponState weapon;
+    extern int hasBlueKey; // Need to ensure this exists in DoomTest.c or similar
     
     switch (type) {
         case PICKUP_HEALTH_SMALL:
@@ -151,6 +168,8 @@ int canPickup(int type) {
         case PICKUP_INVULN:
         case PICKUP_SPEED:
             return 1;  // Always can pick up powerups
+        case PICKUP_KEY_BLUE:
+            return !hasBlueKey; // Only pick up if we don't have it
         default:
             return 0;
     }
@@ -160,14 +179,13 @@ int canPickup(int type) {
 void applyPickup(int type, int currentTime) {
     extern int playerHealth, playerMaxHealth;
     extern int playerArmor, playerMaxArmor;
+    extern int hasBlueKey;
     extern void healPlayer(int amount);
     extern void addArmor(int amount);
     extern void addAmmo(int weaponType, int amount);
     extern void triggerFlash(int r, int g, int b, int currentTime);
-    
-    int r, g, b;
-    getPickupColor(type, &r, &g, &b);
-    
+    extern void showMessage(const char* msg, int duration); // Assuming this might exist or we just use flash
+
     switch (type) {
         case PICKUP_HEALTH_SMALL:
             healPlayer(10);
@@ -209,6 +227,10 @@ void applyPickup(int type, int currentTime) {
         case PICKUP_SPEED:
             powerups.speedEndTime = currentTime + SPEED_DURATION;
             triggerFlash(0, 255, 0, currentTime);
+            break;
+        case PICKUP_KEY_BLUE:
+            hasBlueKey = 1;
+            triggerFlash(0, 0, 255, currentTime);
             break;
     }
 }
@@ -264,9 +286,11 @@ void updatePickups(int playerX, int playerY, int playerZ, int currentTime) {
         int dx = playerX - pickups[i].x;
         int dy = playerY - pickups[i].y;
         int dz = playerZ - pickups[i].z;
-        int distSq = dx * dx + dy * dy + dz * dz;
+        int distSq = dx * dx + dy * dy;
         
-        if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+        // Use cylindrical collision (2D radius + height check)
+        // This fixes issue where player eye height makes floor items unpickable
+        if (distSq < PICKUP_RADIUS * PICKUP_RADIUS && abs(dz) < 40) {
             if (canPickup(pickups[i].type)) {
                 applyPickup(pickups[i].type, currentTime);
                 pickups[i].collected = 1;
@@ -282,7 +306,7 @@ void updatePickups(int playerX, int playerY, int playerZ, int currentTime) {
     }
 }
 
-// Draw pickups as simple 3D sprites
+// Draw pickups as sprites
 void drawPickups(void (*pixelFunc)(int, int, int, int, int),
                  int screenWidth, int screenHeight,
                  int playerX, int playerY, int playerZ, int playerAngle,
@@ -291,58 +315,135 @@ void drawPickups(void (*pixelFunc)(int, int, int, int, int),
     float CS = cosTable[playerAngle];
     float SN = sinTable[playerAngle];
     
+    // Simple sort (Painter's algorithm not strictly needed with depth buffer but good for transparency)
+    int sortedIndices[MAX_PICKUPS];
+    float distances[MAX_PICKUPS];
+    int count = 0;
+
     for (int i = 0; i < MAX_PICKUPS; i++) {
         if (!pickups[i].active || pickups[i].collected) continue;
         
-        // Calculate bobbing offset
-        int phaseInt = (int)pickups[i].bobPhase % 360;
+        float dx = (float)(pickups[i].x - playerX);
+        float dy = (float)(pickups[i].y - playerY);
+        distances[count] = dx * dx + dy * dy;
+        sortedIndices[count] = i;
+        count++;
+    }
+
+    // Sort furthest to closest
+    for(int i=0; i<count-1; i++) {
+        for(int j=0; j<count-i-1; j++) {
+            if(distances[j] < distances[j+1]) {
+                float tmpD = distances[j]; distances[j] = distances[j+1]; distances[j+1] = tmpD;
+                int tmpI = sortedIndices[j]; sortedIndices[j] = sortedIndices[j+1]; sortedIndices[j+1] = tmpI;
+            }
+        }
+    }
+
+    for (int k = 0; k < count; k++) {
+        int i = sortedIndices[k];
+        Pickup* p = &pickups[i];
+        PickupDef* def = &pickupDefs[p->type];
+
+        // Determine sprite frame
+        const unsigned char* spriteData = NULL;
+        int sw = 8, sh = 8;
+
+        if (def->animated && def->frames != NULL) {
+            // Calculate frame
+            int frame = (currentTime / def->frameTime) % def->frameCount;
+            spriteData = def->frames[frame];
+            sw = def->widths[frame];
+            sh = def->heights[frame];
+        } else if (def->staticTexture != NULL) {
+            spriteData = def->staticTexture;
+            sw = def->staticWidth;
+            sh = def->staticHeight;
+        } else {
+             // Fallback to simple colored diamond if no sprite (or use a placeholder)
+             // Skip for now or implement diamond fallback
+             int r, g, b;
+             // getPickupColor(p->type, &r, &g, &b); // Deprecated
+             r=255; g=255; b=0; // Default yellow
+             continue; // Skipping invisible pickups
+        }
+
+        if(!spriteData) continue;
+
+        // Calculate bobbing
+        int phaseInt = (int)p->bobPhase % 360;
         float bobOffset = sinTable[phaseInt] * PICKUP_BOB_HEIGHT;
         
         // Transform to camera space
-        float relX = (float)(pickups[i].x - playerX);
-        float relY = (float)(pickups[i].y - playerY);
-        float relZ = (float)(pickups[i].z - playerZ) + bobOffset;
-        
+        float relX = (float)(p->x - playerX);
+        float relY = (float)(p->y - playerY);
+        float relZ = (float)(p->z - playerZ) + bobOffset - (sh/2); // Center vertically? Or sit on floor?
+
         float camX = relX * CS - relY * SN;
         float camY = relX * SN + relY * CS;
         
         if (camY < 1.0f) continue;  // Behind player
         
-        // Depth test
+        // Perspective projection
         int screenX = (int)(camX * 200.0f / camY + screenWidth / 2);
-        if (screenX < 0 || screenX >= screenWidth) continue;
-        if (camY > depthBuffer[screenX]) continue;
+        int screenY = (int)((relZ - 5) * 200.0f / camY + screenHeight / 2); // Adjusted height
         
-        int screenY = (int)(relZ * 200.0f / camY + screenHeight / 2);
+        // Calculate sprite dimensions on screen
+        // FIXED: Double the size
+        float scaleMultiplier = 2.0f;
+        int spriteHeight = (int)(sh * scaleMultiplier * 200.0f / camY);
+        int spriteWidth = (int)(sw * scaleMultiplier * 200.0f / camY);
         
-        // Get pickup properties
-        int r, g, b;
-        getPickupColor(pickups[i].type, &r, &g, &b);
-        int size = (int)(getPickupSize(pickups[i].type) * 200.0f / camY);
-        if (size < 2) size = 2;
-        if (size > 50) size = 50;
-        
-        // Pulsing glow effect
-        float pulse = (sinTable[(int)(pickups[i].bobPhase * 2) % 360] + 1.0f) / 2.0f;
-        pulse = 0.7f + pulse * 0.3f;
-        r = (int)(r * pulse);
-        g = (int)(g * pulse);
-        b = (int)(b * pulse);
-        
-        // Draw pickup as a diamond shape
-        for (int dy = -size; dy <= size; dy++) {
-            int width = size - abs(dy);
-            for (int dx = -width; dx <= width; dx++) {
-                int px = screenX + dx;
-                int py = screenY + dy;
-                if (px >= 0 && px < screenWidth && py >= 0 && py < screenHeight) {
-                    // Only draw if in front of walls
-                    if (camY < depthBuffer[px]) {
-                        pixelFunc(px, py, r, g, b);
-                    }
-                }
-            }
+         // Ensure minimum size
+        if (spriteWidth < 1) spriteWidth = 1;
+        if (spriteHeight < 1) spriteHeight = 1;
+
+        int startX = screenX - spriteWidth / 2;
+        int endX = screenX + spriteWidth / 2;
+        int startY = screenY - spriteHeight / 2;
+        int endY = screenY + spriteHeight / 2;
+
+        // Check bounds
+        if (startX >= screenWidth || endX < 0 || startY >= screenHeight || endY < 0) continue;
+
+        // Draw loop
+        for(int y = startY; y < endY; y++) {
+             if(y < 0 || y >= screenHeight) continue;
+             // Texture V
+             float v = (float)(y - startY) / (float)spriteHeight;
+             
+             // FIXED: Flip texture vertically (upside down fix)
+             // int texY = (int)(v * (sh)); // Old
+             int texY = (sh - 1) - (int)(v * sh);
+             
+             if (texY < 0) texY = 0;
+             if (texY >= sh) texY = sh - 1;
+
+             for(int x = startX; x < endX; x++) {
+                 if(x < 0 || x >= screenWidth) continue;
+                 
+                 // Depth test
+                 if (camY > depthBuffer[x]) continue;
+
+                 // Texture U
+                 float u = (float)(x - startX) / (float)spriteWidth;
+                 int texX = (int)(u * (sw));
+                 if (texX >= sw) texX = sw - 1;
+
+                 int pixelIdx = (texY * sw + texX) * 3;
+                 int r = spriteData[pixelIdx];
+                 int g = spriteData[pixelIdx+1];
+                 int b = spriteData[pixelIdx+2];
+
+                 // Chroma key
+                 // FIXED: Treat (0,0,0) AND (1,0,0) as transparent
+                 if ((r == 0 && g == 0 && b == 0) || (r == 1 && g == 0 && b == 0)) continue;
+
+                 // Draw
+                 pixelFunc(x, y, r, g, b);
+             }
         }
+
     }
 }
 

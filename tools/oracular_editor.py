@@ -114,6 +114,17 @@ class Enemy:
         self.enemy_type = enemy_type # 0=BOSSA1, 1=BOSSA2, 2=BOSSA3
         self.active = 1
 
+# ADDED: Pickup class
+class Pickup:
+    def __init__(self, x=0, y=0, z=0, pickup_type=0, respawns=1):
+        self.x = x
+        self.y = y
+        self.z = z
+        self.pickup_type = pickup_type
+        self.respawns = respawns
+        self.active = 1
+
+
 # ADDED: Texture class
 class Texture:
     def __init__(self, name: str, frames: List[pygame.Surface], frame_duration: int = 150):
@@ -243,6 +254,10 @@ class OracularEditor:
         self.enemies = []
         self.selected_enemy = None
         
+        # ADDED: Pickup list and selection
+        self.pickups = []
+        self.selected_pickup = None
+        
         self.show_grid = True
         self.snap_to_grid = True
         
@@ -269,9 +284,14 @@ class OracularEditor:
         # ADDED: Enemy defaults
         self.prop_enemy_type = 0
         
+        # ADDED: Pickup defaults
+        self.prop_pickup_type = 0
+        self.entity_mode = "ENEMY" # "ENEMY" or "PICKUP"
+        
         # ADDED: textures
         self.textures: List[Texture] = []
         self.enemy_textures: List[Texture] = [] # ADDED: Enemy textures
+        self.pickup_textures: List[Texture] = [] # ADDED: Pickup textures
         self.load_textures()
         
         # Setup viewports (4-way layout)
@@ -500,6 +520,63 @@ class OracularEditor:
             self.enemy_textures.append(Texture("BOSSA3 (MISSING)", [s]))
             
         print(f"Loaded {len(self.enemy_textures)} enemy textures.")
+
+        # 5. Load Pickup Textures
+        # Load specific sprites
+        health_frames = self.parse_texture_file("health.h", ["HEALTH_frame_0", "HEALTH_frame_1", "HEALTH_frame_2"])
+        armour_frames = self.parse_texture_file("armour.h", ["ARMOUR_frame_0", "ARMOUR_frame_1", "ARMOUR_frame_2", "ARMOUR_frame_3"])
+        bl_key_frames = self.parse_texture_file("bl_key.h", ["BL_KEY_frame_0", "BL_KEY_frame_1"])
+        
+        # Helper to get surface or fallback
+        def get_surf(frames, idx=0, fallback_color=(255,255,255)):
+            if frames and idx < len(frames): return frames[idx]
+            s = pygame.Surface((32, 32)); s.fill(fallback_color); return s
+
+        # Pickup Textures (Mapped to ID)
+        # 0: PICKUP_HEALTH_SMALL (Red) -> Use frame 0 of health
+        # 1: PICKUP_HEALTH_LARGE (Red) -> Use frame 0 of health
+        # 2: PICKUP_ARMOR_SMALL (Blue) -> Use frame 0 of armour
+        # 3: PICKUP_ARMOR_LARGE (Blue) -> Use frame 0 of armour
+        # 4: PICKUP_AMMO_CLIP (Yellow)
+        # 5: PICKUP_AMMO_SHELLS (Yellow)
+        # 6: PICKUP_AMMO_BULLETS (Yellow)
+        # 7: PICKUP_BERSERK (Magenta)
+        # 8: PICKUP_INVULN (Cyan)
+        # 9: PICKUP_SPEED (Green)
+        # 10: PICKUP_KEY_BLUE (Blue Key)
+        
+        # 0: Health Small
+        self.pickup_textures.append(Texture("Health Small", [get_surf(health_frames, 0, (255, 50, 50))], 300))
+        # 1: Health Large
+        self.pickup_textures.append(Texture("Health Large", health_frames if health_frames else [get_surf(health_frames, 0, (255, 50, 50))], 300))
+
+        # 2: Armor Small
+        self.pickup_textures.append(Texture("Armor Small", [get_surf(armour_frames, 0, (50, 100, 255))], 300))
+        # 3: Armor Large
+        self.pickup_textures.append(Texture("Armor Large", armour_frames if armour_frames else [get_surf(armour_frames, 0, (50, 100, 255))], 300))
+
+        # Placeholders for Ammo/Powerups
+        pickup_names_rest = [
+            "Ammo Clip", "Ammo Shells", "Ammo Bullets",
+            "Berserk", "Invuln", "Speed"
+        ]
+        
+        for i, name in enumerate(pickup_names_rest):
+            idx = i + 4 # Start at index 4
+            s = pygame.Surface((32, 32))
+            # Color coding
+            if idx in [4, 5, 6]: s.fill((255, 200, 50)) # Yellow (Ammo)
+            elif idx == 7: s.fill((255, 0, 128))          # Magenta (Berserk)
+            elif idx == 8: s.fill((0, 255, 200))          # Cyan (Invuln)
+            elif idx == 9: s.fill((0, 255, 0))            # Green (Speed)
+            else: s.fill((200, 200, 200))
+            
+            # Draw a simple shape to differentiate
+            pygame.draw.rect(s, (0, 0, 0), (0, 0, 32, 32), 1)
+            self.pickup_textures.append(Texture(name, [s]))
+            
+        # 10: Blue Key
+        self.pickup_textures.append(Texture("Blue Key", bl_key_frames if bl_key_frames else [get_surf(bl_key_frames, 0, (0, 0, 255))], 500))
 
     def setup_viewports(self):
         """Setup 4-way viewport layout"""
@@ -731,7 +808,8 @@ class OracularEditor:
             'sectors': copy.deepcopy(self.sectors),
             'walls': copy.deepcopy(self.walls),
             'player': copy.deepcopy(self.player),
-            'enemies': copy.deepcopy(self.enemies)
+            'enemies': copy.deepcopy(self.enemies),
+            'pickups': copy.deepcopy(self.pickups)
         }
         self.undo_stack.append(state)
         self.redo_stack.clear()
@@ -768,6 +846,8 @@ class OracularEditor:
             self.selected_wall = None
         if self.selected_enemy is not None and self.selected_enemy >= len(self.enemies):
             self.selected_enemy = None
+        if self.selected_pickup is not None and self.selected_pickup >= len(self.pickups):
+            self.selected_pickup = None
         self.selected_vertices = [] # Clear vertex selection to be safe
         
         print("Undo performed")
@@ -996,7 +1076,7 @@ class OracularEditor:
                         wall.x2 = round(wall.x2 / vp.grid_size) * vp.grid_size
                         wall.y2 = round(wall.y2 / vp.grid_size) * vp.grid_size
 
-    def drag_enemy(self, pos):
+    def drag_entity(self, pos):
         vp = self.active_viewport
         if not vp or vp.view_type != ViewType.TOP:
             return
@@ -1015,6 +1095,15 @@ class OracularEditor:
             if self.snap_to_grid:
                 enemy.x = round(enemy.x / vp.grid_size) * vp.grid_size
                 enemy.y = round(enemy.y / vp.grid_size) * vp.grid_size
+
+        elif self.selected_pickup is not None and self.selected_pickup < len(self.pickups):
+            pickup = self.pickups[self.selected_pickup]
+            pickup.x += dx
+            pickup.y += dy
+            
+            if self.snap_to_grid:
+                pickup.x = round(pickup.x / vp.grid_size) * vp.grid_size
+                pickup.y = round(pickup.y / vp.grid_size) * vp.grid_size
 
 
     # ADDED: property click handler
@@ -1048,6 +1137,15 @@ class OracularEditor:
                         # Change default type
                         self.prop_enemy_type = (self.prop_enemy_type + delta) % max(1, len(self.enemy_textures))
                     return True
+        # UI Buttons (Mode switch etc)
+        if hasattr(self, 'ui_buttons'):
+            for btn in self.ui_buttons:
+                if btn['rect'].collidepoint(pos):
+                    action = btn.get('action')
+                    if action:
+                        action()
+                    return True
+
         # Property items
         for item in self.property_items:
             if item['rect'].collidepoint(pos):
@@ -1121,8 +1219,8 @@ class OracularEditor:
                  self.drag_sector(event.pos)
              elif self.current_tool == Tool.VERTEX_EDIT and self.selected_vertices:
                  self.drag_vertices(event.pos)
-             elif self.current_tool == Tool.ENTITY and self.selected_enemy is not None:
-                 self.drag_enemy(event.pos)
+             elif self.current_tool == Tool.ENTITY and (self.selected_enemy is not None or self.selected_pickup is not None):
+                 self.drag_entity(event.pos)
              self.last_mouse_pos = event.pos
              return
 
@@ -1214,31 +1312,68 @@ class OracularEditor:
             
         wx, wy = vp.screen_to_world(pos[0], pos[1])
         
-        # Check if clicked on existing enemy
+        # Check if clicked on existing entity (Enemy OR Pickup)
         clicked_enemy = None
+        clicked_pickup = None
         min_dist = float('inf')
         
+        # Check enemies
         for i, enemy in enumerate(self.enemies):
             dist = math.sqrt((wx - enemy.x)**2 + (wy - enemy.y)**2)
             if dist < 10 / vp.zoom: # Hitbox
                 if dist < min_dist:
                     min_dist = dist
                     clicked_enemy = i
+                    clicked_pickup = None
+        
+        # Check pickups
+        for i, pickup in enumerate(self.pickups):
+            dist = math.sqrt((wx - pickup.x)**2 + (wy - pickup.y)**2)
+            if dist < 8 / vp.zoom: # Smaller hitbox
+                if dist < min_dist:
+                    min_dist = dist
+                    clicked_pickup = i
+                    clicked_enemy = None
         
         if clicked_enemy is not None:
             self.selected_enemy = clicked_enemy
+            self.selected_pickup = None
             self.selected_sector = None
             self.selected_wall = None
+            print(f"Selected Enemy {clicked_enemy}")
             return
             
-        # If no enemy clicked, create new one
+        if clicked_pickup is not None:
+            self.selected_pickup = clicked_pickup
+            self.selected_enemy = None
+            self.selected_sector = None
+            self.selected_wall = None
+            print(f"Selected Pickup {clicked_pickup}")
+            return
+
+        # If we clicked on nothing, check if we should deselect
+        if self.selected_enemy is not None or self.selected_pickup is not None:
+            self.selected_enemy = None
+            self.selected_pickup = None
+            print("Deselected entity")
+            return
+            
+        # If no entity clicked AND nothing selected, create new one based on mode
         if self.snap_to_grid:
             wx, wy = vp.snap_to_grid(wx, wy)
             
         self.save_undo_snapshot()
-        self.enemies.append(Enemy(int(wx), int(wy), 0, self.prop_enemy_type))
-        self.selected_enemy = len(self.enemies) - 1
-        print(f"Created enemy at {int(wx)}, {int(wy)}")
+        
+        if self.entity_mode == "ENEMY":
+            self.enemies.append(Enemy(int(wx), int(wy), 0, self.prop_enemy_type))
+            self.selected_enemy = len(self.enemies) - 1
+            self.selected_pickup = None
+            print(f"Created enemy at {int(wx)}, {int(wy)}")
+        else: # PICKUP
+            self.pickups.append(Pickup(int(wx), int(wy), 0, self.prop_pickup_type))
+            self.selected_pickup = len(self.pickups) - 1
+            self.selected_enemy = None
+            print(f"Created pickup at {int(wx)}, {int(wy)}")
 
 
     def finish_sector_creation(self):
@@ -1634,6 +1769,12 @@ class OracularEditor:
                 self.enemies.pop(self.selected_enemy)
                 self.selected_enemy = None
                 print("Deleted enemy")
+        
+        elif self.selected_pickup is not None:
+            if 0 <= self.selected_pickup < len(self.pickups):
+                self.pickups.pop(self.selected_pickup)
+                self.selected_pickup = None
+                print("Deleted pickup")
     
     def new_level(self):
         """Create new level"""
@@ -1645,6 +1786,9 @@ class OracularEditor:
         self.selected_vertices = []
         self.enemies = []
         self.selected_enemy = None
+        self.pickups = []
+        self.selected_pickup = None
+        self.entity_mode = "ENEMY"
         self.creating_sector = False
         self.sector_vertices = []
         self.current_level_path = DEFAULT_LEVEL_PATH  # Reset to default path
@@ -1678,6 +1822,11 @@ class OracularEditor:
                 f.write(f"\n{len(self.enemies)}\n")
                 for e in self.enemies:
                     f.write(f"{e.x} {e.y} {e.z} {e.enemy_type}\n")
+
+                # Write pickups
+                f.write(f"\n{len(self.pickups)}\n")
+                for p in self.pickups:
+                    f.write(f"{p.x} {p.y} {p.z} {p.pickup_type} {p.respawns}\n")
             
             print(f"Level saved to {self.current_level_path}")
             self.notification_message = "Level Saved!"
@@ -1735,6 +1884,27 @@ class OracularEditor:
                 except ValueError:
                     print("No enemies found or invalid format")
             
+            # Parse pickups
+            self.pickups = []
+            if 'num_enemies' in locals():
+                pickup_line = enemy_line + num_enemies + 2
+            else:
+                pickup_line = enemy_line + 2 # Fallback if no enemies found but maybe line existed?
+
+            if pickup_line < len(lines):
+                 try:
+                    num_pickups = int(lines[pickup_line].strip())
+                    for i in range(pickup_line + 1, pickup_line + 1 + num_pickups):
+                        if i < len(lines):
+                            parts = list(map(int, lines[i].split()))
+                            if len(parts) >= 5:
+                                self.pickups.append(Pickup(parts[0], parts[1], parts[2], parts[3], parts[4]))
+                            elif len(parts) >= 4:
+                                # Legacy support for 4-column format
+                                self.pickups.append(Pickup(parts[0], parts[1], parts[2], parts[3], 1))
+                 except ValueError:
+                     print("No pickups found")
+            
             # Center viewports on the loaded geometry
             self.center_viewports_on_level()
             
@@ -1761,6 +1931,10 @@ class OracularEditor:
         if self.selected_enemy is not None and self.selected_enemy < len(self.enemies):
             enemy = self.enemies[self.selected_enemy]
             self.prop_enemy_type = enemy.enemy_type
+            
+        if self.selected_pickup is not None and self.selected_pickup < len(self.pickups):
+            pickup = self.pickups[self.selected_pickup]
+            self.prop_pickup_type = pickup.pickup_type
             
         # Update notification timer
         if self.notification_timer > 0:
@@ -2076,6 +2250,10 @@ class OracularEditor:
             # Draw enemies
             for i, enemy in enumerate(self.enemies):
                 self.draw_enemy_2d(vp, enemy, i == self.selected_enemy)
+                
+            # Draw pickups
+            for i, pickup in enumerate(self.pickups):
+                self.draw_pickup_2d(vp, pickup, i == self.selected_pickup)
         
         elif vp.view_type in (ViewType.FRONT, ViewType.SIDE):
             # Front/Side view: Draw sectors as rectangles with height
@@ -2266,6 +2444,24 @@ class OracularEditor:
         if is_selected:
             pygame.draw.circle(self.screen, (255, 255, 255), (ex, ey), size + 2, 1)
 
+    def draw_pickup_2d(self, vp, pickup, is_selected):
+        """Draw pickup in 2D view"""
+        px, py = vp.world_to_screen(pickup.x, pickup.y)
+        
+        # Pickup colors based on type (simple vis)
+        color = (0, 255, 0) # Green generic
+        if pickup.pickup_type == 1: color = (255, 165, 0) # Orange
+        elif pickup.pickup_type == 2: color = (0, 0, 255) # Blue
+        
+        size = 4 if is_selected else 3
+        
+        # Draw as small square
+        rect = pygame.Rect(px - size, py - size, size*2, size*2)
+        pygame.draw.rect(self.screen, color, rect)
+        
+        if is_selected:
+            pygame.draw.rect(self.screen, (255, 255, 255), rect, 1)
+
     
     def draw_sector_creation_preview(self, vp):
         """Draw preview of sector being created"""
@@ -2317,6 +2513,10 @@ class OracularEditor:
         # Draw enemies in 3D
         if len(self.enemies) > 0:
             self.draw_3d_enemies(vp)
+            
+        # Draw pickups in 3D
+        if len(self.pickups) > 0:
+            self.draw_3d_pickups(vp)
         
         # Draw controls overlay if this is the active viewport
         if vp.is_active:
@@ -2603,6 +2803,53 @@ class OracularEditor:
                 if rect.colliderect(vp.rect):
                     pygame.draw.rect(self.screen, color, rect)
 
+    def draw_3d_pickups(self, vp):
+        """Draw pickups in 3D view"""
+        cam_x = self.player.x
+        cam_y = self.player.y
+        cam_z = self.player.z
+        cam_angle = math.radians(self.player.a)
+        
+        cos_a = math.cos(cam_angle)
+        sin_a = math.sin(cam_angle)
+        
+        sorted_pickups = []
+        for i, pickup in enumerate(self.pickups):
+            dist_sq = (pickup.x - cam_x)**2 + (pickup.y - cam_y)**2
+            sorted_pickups.append((dist_sq, pickup))
+        
+        sorted_pickups.sort(key=lambda x: x[0], reverse=True)
+        
+        for _, pickup in sorted_pickups:
+            rel_x = pickup.x - cam_x
+            rel_y = pickup.y - cam_y
+            
+            rot_x = rel_x * cos_a - rel_y * sin_a
+            rot_y = rel_x * sin_a + rel_y * cos_a
+            
+            if rot_y < 1: continue
+            
+            scale = 200
+            screen_x = int(vp.rect.x + vp.rect.width // 2 + rot_x * scale / rot_y)
+            screen_y = int(vp.rect.y + vp.rect.height // 2 - (pickup.z - cam_z) * scale / rot_y)
+            
+            size = int(32 * scale / rot_y) # Pickups are smaller
+            if size < 1: continue
+            
+            # Use texture if available
+            tex_idx = pickup.pickup_type
+            if 0 <= tex_idx < len(self.pickup_textures):
+                tex = self.pickup_textures[tex_idx]
+                frame = tex.get_current_frame()
+                scaled_frame = pygame.transform.scale(frame, (size, size))
+                dest_rect = scaled_frame.get_rect(center=(screen_x, screen_y))
+                if dest_rect.colliderect(vp.rect):
+                    self.screen.blit(scaled_frame, dest_rect)
+            else:
+                rect = pygame.Rect(screen_x - size//2, screen_y - size//2, size, size)
+                if rect.colliderect(vp.rect):
+                    pygame.draw.rect(self.screen, (0, 255, 0), rect) # Fallback green box
+
     
     def clip_behind_camera(self, x1, y1, z1, x2, y2, z2):
         """Clip line segment behind camera"""
@@ -2619,235 +2866,299 @@ class OracularEditor:
         return x1, y1, z1
     
     def draw_properties_panel(self):
-        """Draw right properties panel"""
+        """Draw right properties panel (Unity-Style Inspector)"""
         panel_width = 280
         panel_height = WINDOW_HEIGHT - 30 - 25
         panel_x = WINDOW_WIDTH - panel_width
         panel_y = 30
         
+        # Background
         panel_rect = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
-        pygame.draw.rect(self.screen, Colors.PANEL_BG, panel_rect)
-        pygame.draw.line(self.screen, Colors.SEPARATOR, (panel_x, 30),
-                        (panel_x, WINDOW_HEIGHT - 25), 1)
+        pygame.draw.rect(self.screen, (30, 30, 30), panel_rect) # Darker bg
+        pygame.draw.line(self.screen, (20, 20, 20), (panel_x, 30), (panel_x, WINDOW_HEIGHT - 25), 1) # Shadow line
         
-        # Panel title
-        title = self.font_large.render("Properties", True, Colors.TEXT)
-        self.screen.blit(title, (panel_x + 10, panel_y + 10))
-        
-        y = panel_y + 45
-        
-        # Reset property items each frame
+        # Reset interaction lists
         self.property_items = []
         self.texture_nav_buttons = []
+        self.ui_buttons = []
         
-        def add_editable(label_text, target, attr, value, x, y):
-            # Draw label
-            label_surface = self.font_small.render(f"{label_text}:", True, Colors.TEXT_DIM)
-            self.screen.blit(label_surface, (x + 5, y + 2))
+        # Helper Variables
+        cx = panel_x + 10 # Content X
+        cw = panel_width - 20 # Content Width
+        cy = panel_y + 10 # Content Y cursors
+        
+        # --- Helpers ---
+        def draw_header(text):
+            nonlocal cy
+            # Background strip
+            h_rect = pygame.Rect(panel_x, cy, panel_width, 28)
+            pygame.draw.rect(self.screen, (45, 45, 48), h_rect)
+            pygame.draw.line(self.screen, (60, 60, 60), (panel_x, cy), (panel_x + panel_width, cy), 1) # Top highlight
+            pygame.draw.line(self.screen, (20, 20, 20), (panel_x, cy+27), (panel_x + panel_width, cy+27), 1) # Bottom shadow
             
-            # Draw value box
-            label_width = label_surface.get_width()
-            box_x = x + 10 + label_width
-            box_width = panel_width - 20 - (10 + label_width)
-            rect = pygame.Rect(box_x, y, box_width, 20)
+            # Text
+            surf = self.font_large.render(text.upper(), True, (220, 220, 220))
+            self.screen.blit(surf, (cx, cy + 4))
+            cy += 35
             
-            # Highlight if editing
-            if self.edit_field and self.edit_field.get('attr') == attr and self.edit_field.get('target') is target:
-                pygame.draw.rect(self.screen, (255, 255, 255), rect) # White bg when editing
-                pygame.draw.rect(self.screen, Colors.ACCENT, rect, 2) # Accent border
-                edit_text = self.font_small.render(self.edit_buffer, True, (0, 0, 0)) # Black text
-                self.screen.blit(edit_text, (box_x + 5, y + 2))
-            else:
-                pygame.draw.rect(self.screen, (40, 40, 40), rect) # Dark grey bg when idle
-                pygame.draw.rect(self.screen, (60, 60, 60), rect, 1) # Subtle border
-                val_text = self.font_small.render(str(value), True, Colors.TEXT)
-                self.screen.blit(val_text, (box_x + 5, y + 2))
-                
-            # Store rect for click detection (full row or just box? Let's do full row for easier clicking, but visual is just box)
-            full_rect = pygame.Rect(x, y, panel_width - 20, 20)
+        def draw_section(text):
+            nonlocal cy
+            surf = self.font_medium.render(text, True, Colors.ACCENT_BRIGHT)
+            self.screen.blit(surf, (cx, cy))
+            pygame.draw.line(self.screen, (60, 60, 60), (cx, cy + 20), (cx + cw, cy + 20), 1)
+            cy += 28
+
+        def draw_field(label, target, attr, value):
+            nonlocal cy
+            # Label
+            l_surf = self.font_small.render(label, True, (180, 180, 180))
+            self.screen.blit(l_surf, (cx, cy + 3))
+            
+            # Input Box
+            input_w = 100
+            input_h = 22
+            input_x = panel_x + panel_width - 10 - input_w
+            rect = pygame.Rect(input_x, cy, input_w, input_h)
+            
+            # Editing state
+            is_editing = (self.edit_field and self.edit_field.get('attr') == attr and self.edit_field.get('target') is target)
+            
+            bg_color = (255, 255, 255) if is_editing else (40, 40, 40)
+            text_color = (0, 0, 0) if is_editing else (220, 220, 220)
+            border_color = Colors.ACCENT if is_editing else (60, 60, 60)
+            
+            pygame.draw.rect(self.screen, bg_color, rect, border_radius=3)
+            pygame.draw.rect(self.screen, border_color, rect, 1, border_radius=3)
+            
+            display_val = self.edit_buffer if is_editing else str(value)
+            v_surf = self.font_small.render(display_val, True, text_color)
+            
+            # Clip text
+            self.screen.set_clip(rect)
+            self.screen.blit(v_surf, (input_x + 5, cy + 3))
+            self.screen.set_clip(None)
+            
+            # Hitbox
+            full_rect = pygame.Rect(panel_x, cy, panel_width, input_h)
             self.property_items.append({'rect': full_rect, 'target': target, 'attr': attr})
+            
+            cy += 26
+
+        def draw_info(label, value_text):
+            nonlocal cy
+            l_surf = self.font_small.render(label, True, (150, 150, 150))
+            v_surf = self.font_small.render(value_text, True, (220, 220, 220))
+            self.screen.blit(l_surf, (cx, cy))
+            self.screen.blit(v_surf, (cx + 80, cy))
+            cy += 20
+
+        def draw_texture_selector(label, current_idx, texture_list, target_obj, attr_name):
+            nonlocal cy
+            draw_section(label)
+            
+            # Preview Box
+            preview_size = 140
+            p_rect = pygame.Rect(panel_x + (panel_width - preview_size)//2, cy, preview_size, preview_size)
+            pygame.draw.rect(self.screen, (50, 50, 50), p_rect) # Bg
+            pygame.draw.rect(self.screen, (0, 0, 0), p_rect, 1) # Border
+            
+            # Texture Image
+            if texture_list:
+                tex = texture_list[current_idx % len(texture_list)]
+                frame = tex.get_current_frame()
+                scaled = pygame.transform.smoothscale(frame, (preview_size-4, preview_size-4))
+                self.screen.blit(scaled, (p_rect.x+2, p_rect.y+2))
+                
+                # Name overlay
+                name_bg = pygame.Surface((preview_size, 20))
+                name_bg.fill((0, 0, 0))
+                name_bg.set_alpha(150)
+                self.screen.blit(name_bg, (p_rect.x, p_rect.y + preview_size - 20))
+                name_surf = self.font_small.render(tex.name, True, (255, 255, 255))
+                self.screen.blit(name_surf, (p_rect.x + 5, p_rect.y + preview_size - 18))
+            else:
+                s_surf = self.font_small.render("No Texture", True, (150, 150, 150))
+                self.screen.blit(s_surf, (p_rect.centerx - s_surf.get_width()//2, p_rect.centery))
+                
+            cy += preview_size + 10
+            
+            # Nav Buttons
+            btn_w = 80
+            btn_h = 24
+            prev_x = panel_x + 20
+            next_x = panel_x + panel_width - 20 - btn_w
+            
+            for rx, label, delta in [(prev_x, "Previous", -1), (next_x, "Next", 1)]:
+                btn_rect = pygame.Rect(rx, cy, btn_w, btn_h)
+                is_hover = btn_rect.collidepoint(pygame.mouse.get_pos())
+                color = Colors.BUTTON_HOVER if is_hover else Colors.BUTTON
+                pygame.draw.rect(self.screen, color, btn_rect, border_radius=4)
+                
+                t_surf = self.font_small.render(label, True, (255, 255, 255))
+                t_rect = t_surf.get_rect(center=btn_rect.center)
+                self.screen.blit(t_surf, t_rect)
+                
+                # Check collision later
+                # HACK: Using existing texture_nav_buttons logic which expects just rect and delta
+                # BUT logic differs for global (defaults) vs selected object.
+                # In handle_property_click we assumed only one texture selector active at a time (selected obj OR tool default).
+                # That assumption holds true mostly.
+                
+                # If we are targeting a specific object attribute (like enemy.enemy_type), handle_property_click needs to know that.
+                # The existing logic in handle_property_click handles selected_wall, Create Sector tool, and Entity tool.
+                # It doesn't genericize "target object".
+                # For now, let's stick to the current rigid logic in handle_property_click but make the UI nicer here.
+                # Or we can use closure in ui_buttons!
+                
+                def make_action(d=delta):
+                     if attr_name == 'wt': # Wall Texture
+                         obj = target_obj
+                         obj.wt = (obj.wt + d) % max(1, len(texture_list))
+                         self.prop_wall_texture = obj.wt
+                     elif attr_name == 'st': # Sector Texture (new support maybe?)
+                         pass # Not implemented fully in handle_click?
+                     elif attr_name == 'prop_wall_texture':
+                         self.prop_wall_texture = (self.prop_wall_texture + d) % max(1, len(texture_list))
+                     elif attr_name == 'enemy_type':
+                         target_obj.enemy_type = (target_obj.enemy_type + d) % max(1, len(texture_list))
+                         self.prop_enemy_type = target_obj.enemy_type
+                     elif attr_name == 'pickup_type':
+                         target_obj.pickup_type = (target_obj.pickup_type + d) % max(1, len(texture_list))
+                         self.prop_pickup_type = target_obj.pickup_type
+                     elif attr_name == 'prop_enemy_type':
+                         self.prop_enemy_type = (self.prop_enemy_type + d) % max(1, len(texture_list))
+                     elif attr_name == 'prop_pickup_type':
+                         self.prop_pickup_type = (self.prop_pickup_type + d) % max(1, len(texture_list))
+                         
+                self.ui_buttons.append({'rect': btn_rect, 'action': make_action})
+                
+            cy += 35
+
+        def draw_mode_switch():
+            nonlocal cy
+            # Draw a toggle switch for Entity Mode
+            draw_section("Values")
+            
+            # Switch Container
+            sw_w = 160
+            sw_h = 30
+            sw_x = panel_x + (panel_width - sw_w)//2
+            sw_rect = pygame.Rect(sw_x, cy, sw_w, sw_h)
+            pygame.draw.rect(self.screen, (40, 40, 40), sw_rect, border_radius=15)
+            pygame.draw.rect(self.screen, (60, 60, 60), sw_rect, 1, border_radius=15)
+            
+            # Active side
+            half_w = sw_w // 2
+            if self.entity_mode == "ENEMY":
+                active_rect = pygame.Rect(sw_x, cy, half_w, sw_h)
+                color = (200, 50, 50)
+            else:
+                active_rect = pygame.Rect(sw_x + half_w, cy, half_w, sw_h)
+                color = (50, 200, 50)
+                
+            pygame.draw.rect(self.screen, color, active_rect, border_radius=15)
+            
+            # Text
+            e_surf = self.font_small.render("ENEMY", True, (255, 255, 255))
+            p_surf = self.font_small.render("PICKUP", True, (255, 255, 255))
+            
+            self.screen.blit(e_surf, (sw_x + (half_w - e_surf.get_width())//2, cy + 8))
+            self.screen.blit(p_surf, (sw_x + half_w + (half_w - p_surf.get_width())//2, cy + 8))
+            
+            # Button Action
+            def toggle_mode():
+                self.entity_mode = "PICKUP" if self.entity_mode == "ENEMY" else "ENEMY"
+                
+            self.ui_buttons.append({'rect': sw_rect, 'action': toggle_mode})
+            cy += 40
+
+        # --- Content Determination ---
         
+        # 1. Selection takes precedence
         if self.selected_sector is not None:
-            sector = self.sectors[self.selected_sector]
-            self.draw_property_label("Sector", panel_x + 10, y); y += 25
-            add_editable("ID", sector, 'ws', self.selected_sector, panel_x + 10, y); y += 22  # ID not really editable, but keep uniform
-            walls_count = sector.we - sector.ws
-            self.draw_property_value(f"Walls: {walls_count}", panel_x + 10, y); y += 28
-            self.draw_property_label("Heights", panel_x + 10, y); y += 25
-            add_editable("Floor (z1)", sector, 'z1', sector.z1, panel_x + 10, y); y += 22
-            add_editable("Ceiling (z2)", sector, 'z2', sector.z2, panel_x + 10, y); y += 22
-            self.draw_property_label("Textures", panel_x + 10, y); y += 25
-            add_editable("Surface Tex (st)", sector, 'st', sector.st, panel_x + 10, y); y += 22
-            add_editable("Surface Scale (ss)", sector, 'ss', sector.ss, panel_x + 10, y); y += 30
-            if self.selected_wall is not None:
-                wall = self.walls[self.selected_wall]
-                self.draw_property_label("Wall", panel_x + 10, y); y += 25
-                add_editable("Wall ID", wall, 'x1', self.selected_wall, panel_x + 10, y); y += 22  # Not editable logically
-                add_editable("Texture (wt)", wall, 'wt', wall.wt, panel_x + 10, y); y += 22
-                add_editable("U (u)", wall, 'u', wall.u, panel_x + 10, y); y += 22
-                add_editable("V (v)", wall, 'v', wall.v, panel_x + 10, y); y += 22
-                self.draw_property_value(f"Shade: {wall.shade}", panel_x + 10, y); y += 30
-                # Texture preview
-                if self.textures:
-                    tex_index = wall.wt % len(self.textures)
-                    tex = self.textures[tex_index]
-                    preview_size = 128
-                    preview_rect = pygame.Rect(panel_x + (panel_width - preview_size)//2, y, preview_size, preview_size)
-                    pygame.draw.rect(self.screen, Colors.BG_LIGHT, preview_rect)
-                    # Scale texture surface
-                    current_frame = tex.get_current_frame()
-                    scaled = pygame.transform.smoothscale(current_frame, (preview_size-4, preview_size-4))
-                    self.screen.blit(scaled, (preview_rect.x + 2, preview_rect.y + 2))
-                    name_text = self.font_small.render(tex.name, True, Colors.TEXT_DIM)
-                    self.screen.blit(name_text, (preview_rect.x + 4, preview_rect.y + 4))
-                    y += preview_size + 8
-                    # Prev / Next buttons
-                    btn_w = 60; btn_h = 24
-                    prev_rect = pygame.Rect(panel_x + 30, y, btn_w, btn_h)
-                    next_rect = pygame.Rect(panel_x + panel_width - 30 - btn_w, y, btn_w, btn_h)
-                    for rect, label, delta in [(prev_rect, "Prev", -1), (next_rect, "Next", 1)]:
-                        color = Colors.BUTTON_ACTIVE if rect.collidepoint(pygame.mouse.get_pos()) else Colors.BUTTON
-                        pygame.draw.rect(self.screen, color, rect, border_radius=4)
-                        t_surf = self.font_small.render(label, True, Colors.TEXT)
-                        t_rect = t_surf.get_rect(center=rect.center)
-                        self.screen.blit(t_surf, t_rect)
-                        self.texture_nav_buttons.append((rect, delta))
-                    y += btn_h + 10
-        elif self.current_tool == Tool.CREATE_SECTOR:
-            self.draw_property_label("New Sector Defaults", panel_x + 10, y); y += 25
-            self.draw_property_label("Heights", panel_x + 10, y); y += 25
-            add_editable("Floor (z1)", self, 'prop_sector_z1', self.prop_sector_z1, panel_x + 10, y); y += 22
-            add_editable("Ceiling (z2)", self, 'prop_sector_z2', self.prop_sector_z2, panel_x + 10, y); y += 22
-            self.draw_property_label("Sector Textures", panel_x + 10, y); y += 25
-            add_editable("Surface Tex (st)", self, 'prop_sector_texture', self.prop_sector_texture, panel_x + 10, y); y += 22
-            add_editable("Surface Scale (ss)", self, 'prop_sector_scale', self.prop_sector_scale, panel_x + 10, y); y += 30
-            self.draw_property_label("Wall Defaults", panel_x + 10, y); y += 25
-            add_editable("Texture (wt)", self, 'prop_wall_texture', self.prop_wall_texture, panel_x + 10, y); y += 22
-            add_editable("U (u)", self, 'prop_wall_u', self.prop_wall_u, panel_x + 10, y); y += 22
-            add_editable("V (v)", self, 'prop_wall_v', self.prop_wall_v, panel_x + 10, y); y += 22
-            
-            # Texture preview for defaults
-            if self.textures:
-                tex_index = self.prop_wall_texture % len(self.textures)
-                tex = self.textures[tex_index]
-                preview_size = 128
-                preview_rect = pygame.Rect(panel_x + (panel_width - preview_size)//2, y, preview_size, preview_size)
-                pygame.draw.rect(self.screen, Colors.BG_LIGHT, preview_rect)
-                # Scale texture surface
-                current_frame = tex.get_current_frame()
-                scaled = pygame.transform.smoothscale(current_frame, (preview_size-4, preview_size-4))
-                self.screen.blit(scaled, (preview_rect.x + 2, preview_rect.y + 2))
-                name_text = self.font_small.render(tex.name, True, Colors.TEXT_DIM)
-                self.screen.blit(name_text, (preview_rect.x + 4, preview_rect.y + 4))
-                y += preview_size + 8
-                # Prev / Next buttons
-                btn_w = 60; btn_h = 24
-                prev_rect = pygame.Rect(panel_x + 30, y, btn_w, btn_h)
-                next_rect = pygame.Rect(panel_x + panel_width - 30 - btn_w, y, btn_w, btn_h)
-                for rect, label, delta in [(prev_rect, "Prev", -1), (next_rect, "Next", 1)]:
-                    color = Colors.BUTTON_ACTIVE if rect.collidepoint(pygame.mouse.get_pos()) else Colors.BUTTON
-                    pygame.draw.rect(self.screen, color, rect, border_radius=4)
-                    t_surf = self.font_small.render(label, True, Colors.TEXT)
-                    t_rect = t_surf.get_rect(center=rect.center)
-                    self.screen.blit(t_surf, t_rect)
-                    self.texture_nav_buttons.append((rect, delta))
-                y += btn_h + 10
-        elif self.current_tool == Tool.ENTITY and self.selected_enemy is None:
-            self.draw_property_label("New Enemy Defaults", panel_x + 10, y); y += 25
-            add_editable("Type (0-2)", self, 'prop_enemy_type', self.prop_enemy_type, panel_x + 10, y); y += 22
-            
-            # Enemy Texture Preview for Defaults
-            if 0 <= self.prop_enemy_type < len(self.enemy_textures):
-                tex = self.enemy_textures[self.prop_enemy_type]
-                preview_size = 128
-                preview_rect = pygame.Rect(panel_x + (panel_width - preview_size)//2, y, preview_size, preview_size)
-                pygame.draw.rect(self.screen, Colors.BG_LIGHT, preview_rect)
-                
-                current_frame = tex.get_current_frame()
-                # Maintain aspect
-                w, h = current_frame.get_size()
-                aspect = w / h
-                if aspect > 1:
-                    draw_w = preview_size - 4
-                    draw_h = int(draw_w / aspect)
-                else:
-                    draw_h = preview_size - 4
-                    draw_w = int(draw_h * aspect)
-                    
-                scaled = pygame.transform.smoothscale(current_frame, (draw_w, draw_h))
-                dest = scaled.get_rect(center=preview_rect.center)
-                self.screen.blit(scaled, dest)
-                
-                name_text = self.font_small.render(tex.name, True, Colors.TEXT_DIM)
-                self.screen.blit(name_text, (preview_rect.x + 4, preview_rect.y + 4))
-                y += preview_size + 8
-                
-                # Prev / Next buttons for Enemy Type
-                btn_w = 60; btn_h = 24
-                prev_rect = pygame.Rect(panel_x + 30, y, btn_w, btn_h)
-                next_rect = pygame.Rect(panel_x + panel_width - 30 - btn_w, y, btn_w, btn_h)
-                for rect, label, delta in [(prev_rect, "Prev", -1), (next_rect, "Next", 1)]:
-                    color = Colors.BUTTON_ACTIVE if rect.collidepoint(pygame.mouse.get_pos()) else Colors.BUTTON
-                    pygame.draw.rect(self.screen, color, rect, border_radius=4)
-                    t_surf = self.font_small.render(label, True, Colors.TEXT)
-                    t_rect = t_surf.get_rect(center=rect.center)
-                    self.screen.blit(t_surf, t_rect)
-                    # We can reuse texture_nav_buttons logic if we handle it in handle_property_click
-                    # But we need to distinguish between wall texture and enemy type
-                    # Let's add a special handler or just hack it into texture_nav_buttons with a flag
-                    # For simplicity, let's just use a separate list or check tool type in handle_property_click
-                    self.texture_nav_buttons.append((rect, delta)) 
-                y += btn_h + 10
-        else:
-            self.draw_property_label("Current Settings", panel_x + 10, y); y += 25
-            self.draw_property_value(f"Tool: {self.current_tool.name}", panel_x + 10, y); y += 20
-            self.draw_property_value(f"Grid: {'On' if self.show_grid else 'Off'}", panel_x + 10, y); y += 20
-            self.draw_property_value(f"Snap: {'On' if self.snap_to_grid else 'Off'}", panel_x + 10, y); y += 30
-            self.draw_property_label("Default Properties", panel_x + 10, y); y += 25
-            self.draw_property_value(f"Wall Texture: {self.prop_wall_texture}", panel_x + 10, y); y += 20
-            self.draw_property_value(f"Floor Height: {self.prop_sector_z1}", panel_x + 10, y); y += 20
-            self.draw_property_value(f"Ceiling Height: {self.prop_sector_z2}", panel_x + 10, y)
-            
-        if self.selected_enemy is not None and self.selected_enemy < len(self.enemies):
+             sector = self.sectors[self.selected_sector]
+             draw_header(f"SECTOR #{self.selected_sector}")
+             
+             draw_section("Geometry")
+             draw_info("Walls", f"{sector.we - sector.ws}")
+             draw_field("Floor Z", sector, 'z1', sector.z1)
+             draw_field("Ceil Z", sector, 'z2', sector.z2)
+             
+             draw_section("Surface")
+             draw_field("Texture ID", sector, 'st', sector.st)
+             draw_field("Scale", sector, 'ss', sector.ss)
+             
+             if self.selected_wall is not None:
+                 wall = self.walls[self.selected_wall]
+                 cy += 10
+                 draw_header(f"WALL #{self.selected_wall}")
+                 
+                 draw_section("Coordinates")
+                 draw_info("Start", f"{wall.x1}, {wall.y1}")
+                 draw_info("End", f"{wall.x2}, {wall.y2}")
+                 
+                 draw_section("Mapping")
+                 draw_field("Offset U", wall, 'u', wall.u)
+                 draw_field("Offset V", wall, 'v', wall.v)
+                 
+                 draw_texture_selector("Wall Texture", wall.wt, self.textures, wall, 'wt')
+
+        elif self.selected_enemy is not None and self.selected_enemy < len(self.enemies):
             enemy = self.enemies[self.selected_enemy]
-            self.draw_property_label("Enemy", panel_x + 10, y); y += 25
-            add_editable("Type (0-2)", enemy, 'enemy_type', enemy.enemy_type, panel_x + 10, y); y += 22
-            add_editable("Z (z)", enemy, 'z', enemy.z, panel_x + 10, y); y += 22
+            draw_header(f"ENEMY #{self.selected_enemy}")
             
-            # Enemy Texture Preview
-            if 0 <= enemy.enemy_type < len(self.enemy_textures):
-                tex = self.enemy_textures[enemy.enemy_type]
-                preview_size = 128
-                preview_rect = pygame.Rect(panel_x + (panel_width - preview_size)//2, y, preview_size, preview_size)
-                pygame.draw.rect(self.screen, Colors.BG_LIGHT, preview_rect)
-                
-                current_frame = tex.get_current_frame()
-                # Maintain aspect
-                w, h = current_frame.get_size()
-                aspect = w / h
-                if aspect > 1:
-                    draw_w = preview_size - 4
-                    draw_h = int(draw_w / aspect)
-                else:
-                    draw_h = preview_size - 4
-                    draw_w = int(draw_h * aspect)
-                    
-                scaled = pygame.transform.smoothscale(current_frame, (draw_w, draw_h))
-                dest = scaled.get_rect(center=preview_rect.center)
-                self.screen.blit(scaled, dest)
-                
-                name_text = self.font_small.render(tex.name, True, Colors.TEXT_DIM)
-                self.screen.blit(name_text, (preview_rect.x + 4, preview_rect.y + 4))
-                y += preview_size + 8
+            draw_section("Transform")
+            draw_field("Pos X", enemy, 'x', enemy.x)
+            draw_field("Pos Y", enemy, 'y', enemy.y)
+            draw_field("Pos Z", enemy, 'z', enemy.z)
+            
+            draw_texture_selector("Enemy Type", enemy.enemy_type, self.enemy_textures, enemy, 'enemy_type')
+
+        elif self.selected_pickup is not None and self.selected_pickup < len(self.pickups):
+            pickup = self.pickups[self.selected_pickup]
+            draw_header(f"PICKUP #{self.selected_pickup}")
+            
+            draw_section("Transform")
+            draw_field("Pos X", pickup, 'x', pickup.x)
+            draw_field("Pos Y", pickup, 'y', pickup.y)
+            draw_field("Pos Z", pickup, 'z', pickup.z)
+            
+            draw_texture_selector("Pickup Type", pickup.pickup_type, self.pickup_textures, pickup, 'pickup_type')
+
+        # 2. Tool Defaults
+        elif self.current_tool == Tool.CREATE_SECTOR:
+            draw_header("TOOL: SECTOR")
+            
+            draw_section("Defaults")
+            draw_field("Floor Z", self, 'prop_sector_z1', self.prop_sector_z1)
+            draw_field("Ceil Z", self, 'prop_sector_z2', self.prop_sector_z2)
+            
+            draw_texture_selector("Wall Texture", self.prop_wall_texture, self.textures, self, 'prop_wall_texture')
+
+        elif self.current_tool == Tool.ENTITY:
+            draw_header("TOOL: ENTITY")
+            draw_mode_switch()
+            
+            if self.entity_mode == "ENEMY":
+                draw_texture_selector("Default Enemy", self.prop_enemy_type, self.enemy_textures, self, 'prop_enemy_type')
+            else:
+                draw_texture_selector("Default Pickup", self.prop_pickup_type, self.pickup_textures, self, 'prop_pickup_type')
+
+        else:
+            draw_header("SCENE INFO")
+            
+            draw_section("Statistics")
+            draw_info("Total Walls", str(len(self.walls)))
+            draw_info("Total Sectors", str(len(self.sectors)))
+            draw_info("Total Enemies", str(len(self.enemies)))
+            draw_info("Total Pickups", str(len(self.pickups)))
+            
+            draw_section("Editor")
+            draw_info("Grid Size", str(self.active_viewport.grid_size) if self.active_viewport else "8")
+            draw_info("FPS", str(int(self.clock.get_fps())))
 
 
-    def draw_property_label(self, text, x, y):
-        label = self.font_medium.render(text, True, Colors.ACCENT_BRIGHT)
-        self.screen.blit(label, (x, y))
 
-    def draw_property_value(self, text, x, y):
-        value = self.font_small.render(text, True, Colors.TEXT_DIM)
-        self.screen.blit(value, (x + 5, y))
 
     def draw_status_bar(self):
         """Draw bottom status bar"""
