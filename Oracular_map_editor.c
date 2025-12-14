@@ -124,29 +124,29 @@ void load()
     if (fp == NULL) { printf("Error opening level.h"); return; }
     int s, w;
 
-    fscanf_s(fp, "%i", &numSect);   //number of sectors 
+    fscanf(fp, "%i", &numSect);   //number of sectors 
     for (s = 0; s < numSect; s++)      //load all sectors
     {
-        fscanf_s(fp, "%i", &S[s].ws);
-        fscanf_s(fp, "%i", &S[s].we);
-        fscanf_s(fp, "%i", &S[s].z1);
-        fscanf_s(fp, "%i", &S[s].z2);
-        fscanf_s(fp, "%i", &S[s].st);
-        fscanf_s(fp, "%i", &S[s].ss);
+        fscanf(fp, "%i", &S[s].ws);
+        fscanf(fp, "%i", &S[s].we);
+        fscanf(fp, "%i", &S[s].z1);
+        fscanf(fp, "%i", &S[s].z2);
+        fscanf(fp, "%i", &S[s].st);
+        fscanf(fp, "%i", &S[s].ss);
     }
-    fscanf_s(fp, "%i", &numWall);   //number of walls 
+    fscanf(fp, "%i", &numWall);   //number of walls 
     for (s = 0; s < numWall; s++)      //load all walls
     {
-        fscanf_s(fp, "%i", &W[s].x1);
-        fscanf_s(fp, "%i", &W[s].y1);
-        fscanf_s(fp, "%i", &W[s].x2);
-        fscanf_s(fp, "%i", &W[s].y2);
-        fscanf_s(fp, "%i", &W[s].wt);
-        fscanf_s(fp, "%i", &W[s].u);
-        fscanf_s(fp, "%i", &W[s].v);
-        fscanf_s(fp, "%i", &W[s].shade);
+        fscanf(fp, "%i", &W[s].x1);
+        fscanf(fp, "%i", &W[s].y1);
+        fscanf(fp, "%i", &W[s].x2);
+        fscanf(fp, "%i", &W[s].y2);
+        fscanf(fp, "%i", &W[s].wt);
+        fscanf(fp, "%i", &W[s].u);
+        fscanf(fp, "%i", &W[s].v);
+        fscanf(fp, "%i", &W[s].shade);
     }
-    fscanf_s(fp, "%i %i %i %i %i", &P.x, &P.y, &P.z, &P.a, &P.l); //player position, angle, look direction 
+    fscanf(fp, "%i %i %i %i %i", &P.x, &P.y, &P.z, &P.a, &P.l); //player position, angle, look direction 
     fclose(fp);
 }
 
@@ -513,14 +513,14 @@ void mouse(int button, int state, int x, int y)
             //top height
             if (y > 222 && y < 256)
             {
-                if (x < 610) { dark = 8; G.z2 -= 5; if (G.z2 == G.z1) { G.z1 -= 5; } }
-                else { dark = 9; G.z2 += 5; }
+                if (x < 610) { dark = 8; G.z2 -= 4; if (G.z2 == G.z1) { G.z1 -= 4; } }
+                else { dark = 9; G.z2 += 4; }
             }
             //bot height
             if (y > 256 && y < 288)
             {
-                if (x < 610) { dark = 10; G.z1 -= 5; }
-                else { dark = 11; G.z1 += 5; if (G.z1 == G.z2) { G.z2 += 5; } }
+                if (x < 610) { dark = 10; G.z1 -= 4; }
+                else { dark = 11; G.z1 += 4; if (G.z1 == G.z2) { G.z2 += 4; } }
             }
             //add sector
             if (y > 288 && y < 318) { G.addSect += 1; G.selS = 0; G.selW = 0; if (G.addSect > 1) { G.addSect = 0; } }

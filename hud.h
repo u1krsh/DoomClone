@@ -18,7 +18,7 @@ void initHUD(void);
 
 // Draw HUD elements
 void drawHUD(void (*pixelFunc)(int, int, int, int, int), 
-             int screenWidth, int screenHeight);
+             int screenWidth, int screenHeight, int currentTime);
 
 // Draw player status bar (health/armor)
 void drawStatusBar(void (*pixelFunc)(int, int, int, int, int),

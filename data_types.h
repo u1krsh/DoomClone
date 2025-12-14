@@ -51,6 +51,7 @@ typedef struct {
 	int surf[SW]; // to hold points for surface
 	int surface; //is there a surface to draw
 	int ss, st; //surface texture, surface scale
+	int tag; // sector tag (0=Normal, 1=Stair)
 } sectors;
 
 typedef struct {

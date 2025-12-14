@@ -601,6 +601,10 @@ class ModernTextureEditor:
         self.create_property_button(btn_grid, "Duplicate", self.duplicate_frame).grid(row=1, column=0, sticky='ew', padx=2, pady=2)
         self.create_property_button(btn_grid, "Play", self.toggle_play).grid(row=1, column=1, sticky='ew', padx=2, pady=2)
         
+        # Frame reorder buttons
+        self.create_property_button(btn_grid, "Move ◀", self.move_frame_left).grid(row=2, column=0, sticky='ew', padx=2, pady=2)
+        self.create_property_button(btn_grid, "Move ▶", self.move_frame_right).grid(row=2, column=1, sticky='ew', padx=2, pady=2)
+        
         btn_grid.grid_columnconfigure(0, weight=1)
         btn_grid.grid_columnconfigure(1, weight=1)
         
@@ -1078,6 +1082,36 @@ class ModernTextureEditor:
         self.is_playing = not self.is_playing
         if self.is_playing:
             self.play_animation()
+    
+    def move_frame_left(self):
+        """Move current frame to the left (earlier in sequence)"""
+        if not self.frames or len(self.frames) < 2:
+            return
+        
+        if self.current_frame > 0:
+            self.undo_manager.push_state()
+            # Swap current frame with previous
+            self.frames[self.current_frame], self.frames[self.current_frame - 1] = \
+                self.frames[self.current_frame - 1], self.frames[self.current_frame]
+            self.current_frame -= 1
+            self.update_info()
+            self.draw_timeline()
+            self.draw_canvas()
+    
+    def move_frame_right(self):
+        """Move current frame to the right (later in sequence)"""
+        if not self.frames or len(self.frames) < 2:
+            return
+        
+        if self.current_frame < len(self.frames) - 1:
+            self.undo_manager.push_state()
+            # Swap current frame with next
+            self.frames[self.current_frame], self.frames[self.current_frame + 1] = \
+                self.frames[self.current_frame + 1], self.frames[self.current_frame]
+            self.current_frame += 1
+            self.update_info()
+            self.draw_timeline()
+            self.draw_canvas()
             
     def play_animation(self):
         """Play animation"""

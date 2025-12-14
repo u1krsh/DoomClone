@@ -11,6 +11,8 @@
 #include "textures/shotgun_stat.h"
 #include "textures/shotgun_flash.h"
 #include "textures/shotgun_reload.h"
+#include "textures/hands_stat.h"
+#include "textures/hand_punch.h"
 
 // Weapon types
 #define WEAPON_FIST 0
@@ -25,7 +27,7 @@
 #define CHAINGUN_DAMAGE 10
 #define FIST_DAMAGE 10
 
-#define PISTOL_COOLDOWN 300     // ms between shots
+#define PISTOL_COOLDOWN 500     // ms between shots (0.5 second delay)
 #define SHOTGUN_COOLDOWN 1200
 #define CHAINGUN_COOLDOWN 80
 #define FIST_COOLDOWN 400
@@ -373,7 +375,133 @@ void drawCrosshair(void (*pixelFunc)(int, int, int, int, int),
 void drawWeaponSprite(void (*pixelFunc)(int, int, int, int, int),
                       int screenWidth, int screenHeight,
                       int currentTime) {
-    // Currently only pistol sprite is available
+    // Fist Drawing Logic
+    if (weapon.currentWeapon == WEAPON_FIST) {
+        int timeSinceFire = currentTime - weapon.lastFireTime;
+        const unsigned char* spriteData = HANDS_STAT;
+        int spriteWidth = HANDS_STAT_WIDTH;
+        int spriteHeight = HANDS_STAT_HEIGHT;
+        
+        // Animation timing
+        int punchAnimDuration = 400; // Total punch animation duration (matches FIST_COOLDOWN)
+        int slideBackOffset = 0;
+        int punchYOffset = -15; // Extra Y offset for punch frames
+        
+        // Determine state and apply slide-back effect
+        if (timeSinceFire >= 0 && timeSinceFire < punchAnimDuration) {
+            // During punch animation
+            punchYOffset = 5; // Move punch frames lower than static hand
+            
+            if (timeSinceFire < 100) {
+                // First phase: show punch frame (0-100ms)
+                spriteData = HAND_PUNCH_frame_0;
+                spriteWidth = HAND_PUNCH_frame_widths[0];
+                spriteHeight = HAND_PUNCH_frame_heights[0];
+                // Slide forward slightly
+                slideBackOffset = -(int)((timeSinceFire / 100.0f) * 5);
+            } else if (timeSinceFire < 200) {
+                // Second phase: transition frame (100-200ms)
+                spriteData = HAND_PUNCH_frame_1;
+                spriteWidth = HAND_PUNCH_frame_widths[1];
+                spriteHeight = HAND_PUNCH_frame_heights[1];
+                slideBackOffset = -5; // Hold forward position
+            } else if (timeSinceFire < 300) {
+                // Third phase: full extend (200-300ms)
+                spriteData = HAND_PUNCH_frame_2;
+                spriteWidth = HAND_PUNCH_frame_widths[2];
+                spriteHeight = HAND_PUNCH_frame_heights[2];
+                slideBackOffset = -5; // Hold forward position
+            } else {
+                // Recovery phase: play animation backwards (300-400ms)
+                int recoveryTime = timeSinceFire - 300;
+                if (recoveryTime < 25) {
+                    // Frame 2 (300-325ms)
+                    spriteData = HAND_PUNCH_frame_2;
+                    spriteWidth = HAND_PUNCH_frame_widths[2];
+                    spriteHeight = HAND_PUNCH_frame_heights[2];
+                    slideBackOffset = -5;
+                } else if (recoveryTime < 50) {
+                    // Frame 1 (325-350ms)
+                    spriteData = HAND_PUNCH_frame_1;
+                    spriteWidth = HAND_PUNCH_frame_widths[1];
+                    spriteHeight = HAND_PUNCH_frame_heights[1];
+                    slideBackOffset = -5;
+                } else if (recoveryTime < 75) {
+                    // Frame 0 (350-375ms)
+                    spriteData = HAND_PUNCH_frame_0;
+                    spriteWidth = HAND_PUNCH_frame_widths[0];
+                    spriteHeight = HAND_PUNCH_frame_heights[0];
+                    slideBackOffset = -(int)(((75.0f - recoveryTime) / 25.0f) * 5);
+                } else {
+                    // Back to static (375-400ms)
+                    spriteData = HANDS_STAT;
+                    spriteWidth = HANDS_STAT_WIDTH;
+                    spriteHeight = HANDS_STAT_HEIGHT;
+                    slideBackOffset = 0;
+                    punchYOffset = 0; // Return to normal height
+                }
+            }
+        } else {
+            // Idle state: static hand
+            spriteData = HANDS_STAT;
+            spriteWidth = HANDS_STAT_WIDTH;
+            spriteHeight = HANDS_STAT_HEIGHT;
+            slideBackOffset = 0;
+            punchYOffset = 3;
+        }
+        
+        // Position at bottom center (moved up - positive value raises it)
+        int startX = (screenWidth - spriteWidth) / 2;
+        int startY = 0;
+        
+        // Apply switching animation offset
+        startY -= (int)weapon.weaponOffsetY;
+        
+        // Apply punch Y offset (makes punch frames lower)
+        startY -= punchYOffset;
+        
+        // Apply slide-back offset
+        startY -= slideBackOffset;
+        
+        // Apply weapon bob (only when not punching)
+        float bobOffsetX = 0;
+        float bobOffsetY = 0;
+        if (weapon.weaponBobPhase > 0 && timeSinceFire >= punchAnimDuration) {
+            bobOffsetX = sin(weapon.weaponBobPhase * 3.14159f / 180.0f) * 2.0f;
+            bobOffsetY = sin(weapon.weaponBobPhase * 2.0f * 3.14159f / 180.0f) * 1.5f;
+        }
+        startX += (int)bobOffsetX;
+        startY += (int)bobOffsetY;
+        
+        // Draw the fist sprite
+        for (int y = 0; y < spriteHeight; y++) {
+            for (int x = 0; x < spriteWidth; x++) {
+                int srcY = spriteHeight - 1 - y;
+                
+                if (srcY < 0 || srcY >= spriteHeight) continue;
+                
+                int pixelIndex = (srcY * spriteWidth + x) * 3;
+                
+                int r = spriteData[pixelIndex + 0];
+                int g = spriteData[pixelIndex + 1];
+                int b = spriteData[pixelIndex + 2];
+                
+                // Skip transparent pixels
+                if (r == 1 && g == 0 && b == 0) continue;
+                
+                int drawX = startX + x;
+                int drawY = startY + y;
+                
+                if (drawX >= 0 && drawX < screenWidth && 
+                    drawY >= 0 && drawY < screenHeight) {
+                    pixelFunc(drawX, drawY, r, g, b);
+                }
+            }
+        }
+        return; // Done drawing fist
+    }
+    
+    // Currently only pistol and shotgun sprites are available
     if (weapon.currentWeapon != WEAPON_PISTOL && weapon.currentWeapon != WEAPON_SHOTGUN) {
         // Draw placeholder for other weapons (just return for now)
         return;

@@ -89,13 +89,14 @@ class Wall:
         self.shade = shade
 
 class Sector:
-    def __init__(self, ws=0, we=0, z1=0, z2=40, st=0, ss=4):
+    def __init__(self, ws=0, we=0, z1=0, z2=40, st=0, ss=4, tag=0):
         self.ws = ws  # wall start
         self.we = we  # wall end
         self.z1 = z1  # bottom height
         self.z2 = z2  # top height
         self.st = st  # surface texture index
         self.ss = ss  # surface scale
+        self.tag = tag # 0=Normal, 1=Stair
 
 class Player:
     def __init__(self, x=0, y=0, z=20, a=0, l=0):
@@ -280,6 +281,7 @@ class OracularEditor:
         self.prop_sector_z2 = 40
         self.prop_sector_texture = 0
         self.prop_sector_scale = 4
+        self.prop_sector_tag = 0
         
         # ADDED: Enemy defaults
         self.prop_enemy_type = 0
@@ -962,6 +964,51 @@ class OracularEditor:
             self.textured_view = not self.textured_view
             self.status_message = f"3D View: {'Textured' if self.textured_view else 'Wireframe'}"
             self.status_timer = 120
+            
+        # ADDED: Height adjustment shortcuts (4 units)
+        elif event.key == pygame.K_LEFTBRACKET:
+            # Decrease height
+            self.save_undo_snapshot()
+            if pygame.key.get_mods() & pygame.KMOD_SHIFT:
+                # Ceiling
+                if self.selected_sector is not None:
+                    self.sectors[self.selected_sector].z2 -= 4
+                    self.prop_sector_z2 = self.sectors[self.selected_sector].z2
+                else:
+                    self.prop_sector_z2 -= 4
+                self.status_message = "Ceiling Lowered (-4)"
+            else:
+                # Floor
+                if self.selected_sector is not None:
+                    self.sectors[self.selected_sector].z1 -= 4
+                    self.prop_sector_z1 = self.sectors[self.selected_sector].z1
+                else:
+                    self.prop_sector_z1 -= 4
+                self.status_message = "Floor Lowered (-4)"
+            self.notification_message = self.status_message
+            self.notification_timer = 1.0
+
+        elif event.key == pygame.K_RIGHTBRACKET:
+            # Increase height
+            self.save_undo_snapshot()
+            if pygame.key.get_mods() & pygame.KMOD_SHIFT:
+                # Ceiling
+                if self.selected_sector is not None:
+                    self.sectors[self.selected_sector].z2 += 4
+                    self.prop_sector_z2 = self.sectors[self.selected_sector].z2
+                else:
+                    self.prop_sector_z2 += 4
+                self.status_message = "Ceiling Raised (+4)"
+            else:
+                # Floor
+                if self.selected_sector is not None:
+                    self.sectors[self.selected_sector].z1 += 4
+                    self.prop_sector_z1 = self.sectors[self.selected_sector].z1
+                else:
+                    self.prop_sector_z1 += 4
+                self.status_message = "Floor Raised (+4)"
+            self.notification_message = self.status_message
+            self.notification_timer = 1.0
 
     def handle_mouse_down(self, event):
         if event.button == 1:
@@ -1399,7 +1446,7 @@ class OracularEditor:
             self.walls.append(wall)
         wall_end = len(self.walls)
         sector = Sector(wall_start, wall_end, self.prop_sector_z1, self.prop_sector_z2,
-                        self.prop_sector_texture, self.prop_sector_scale)
+                        self.prop_sector_texture, self.prop_sector_scale, self.prop_sector_tag)
         self.sectors.append(sector)
         print(f"Created sector with {len(self.sector_vertices)} walls")
         self.creating_sector = False
@@ -1808,7 +1855,7 @@ class OracularEditor:
                 # Write sectors
                 f.write(f"{len(self.sectors)}\n")
                 for s in self.sectors:
-                    f.write(f"{s.ws} {s.we} {s.z1} {s.z2} {s.st} {s.ss}\n")
+                    f.write(f"{s.ws} {s.we} {s.z1} {s.z2} {s.st} {s.ss} {s.tag}\n")
                 
                 # Write walls
                 f.write(f"{len(self.walls)}\n")
@@ -1851,6 +1898,7 @@ class OracularEditor:
             self.sectors = []
             for i in range(1, num_sectors + 1):
                 parts = list(map(int, lines[i].split()))
+                if len(parts) < 7: parts.append(0) # Default tag 0 if missing
                 self.sectors.append(Sector(*parts))
             
             # Parse walls
@@ -1921,6 +1969,7 @@ class OracularEditor:
             self.prop_sector_z2 = sector.z2
             self.prop_sector_texture = sector.st
             self.prop_sector_scale = sector.ss
+            self.prop_sector_tag = sector.tag
             
             if self.selected_wall is not None:
                 wall = self.walls[self.selected_wall]
@@ -2544,6 +2593,8 @@ class OracularEditor:
             "WASD - Move",
             "Q/E - Up/Down",
             "Arrows - Look/Turn",
+            "[/] - Floor Z (+/- 4)",
+            "Shift+[/] - Ceil Z (+/- 4)",
             f"Pos: ({self.player.x}, {self.player.y}, {self.player.z})",
             f"Angle: {self.player.a} deg"
         ]
@@ -3034,6 +3085,41 @@ class OracularEditor:
                 
             cy += 35
 
+        def draw_checkbox(label, target, attr):
+            nonlocal cy
+            # Label
+            l_surf = self.font_small.render(label, True, (180, 180, 180))
+            self.screen.blit(l_surf, (cx, cy + 5))
+            
+            # Checkbox
+            cb_size = 20
+            cb_x = panel_x + panel_width - 10 - cb_size
+            cb_rect = pygame.Rect(cb_x, cy, cb_size, cb_size)
+            
+            val = getattr(target, attr)
+            is_checked = (val == 1)
+            
+            # Draw box
+            pygame.draw.rect(self.screen, (40, 40, 40), cb_rect, border_radius=4)
+            pygame.draw.rect(self.screen, (60, 60, 60), cb_rect, 1, border_radius=4)
+            
+            if is_checked:
+                # Draw checkmark
+                color = Colors.ACCENT_BRIGHT
+                pygame.draw.rect(self.screen, color, (cb_x+4, cy+4, cb_size-8, cb_size-8), border_radius=2)
+            
+            def toggle_action():
+                new_val = 0 if val == 1 else 1
+                setattr(target, attr, new_val)
+                # Sync props if needed
+                if isinstance(target, Sector):
+                    self.prop_sector_tag = new_val
+                elif attr == 'prop_sector_tag':
+                    self.prop_sector_tag = new_val
+            
+            self.ui_buttons.append({'rect': cb_rect, 'action': toggle_action})
+            cy += 28
+
         def draw_mode_switch():
             nonlocal cy
             # Draw a toggle switch for Entity Mode
@@ -3083,6 +3169,7 @@ class OracularEditor:
              draw_info("Walls", f"{sector.we - sector.ws}")
              draw_field("Floor Z", sector, 'z1', sector.z1)
              draw_field("Ceil Z", sector, 'z2', sector.z2)
+             draw_checkbox("Is Stair", sector, 'tag')
              
              draw_section("Surface")
              draw_field("Texture ID", sector, 'st', sector.st)
@@ -3132,6 +3219,7 @@ class OracularEditor:
             draw_section("Defaults")
             draw_field("Floor Z", self, 'prop_sector_z1', self.prop_sector_z1)
             draw_field("Ceil Z", self, 'prop_sector_z2', self.prop_sector_z2)
+            draw_checkbox("Is Stair", self, 'prop_sector_tag')
             
             draw_texture_selector("Wall Texture", self.prop_wall_texture, self.textures, self, 'prop_wall_texture')
 

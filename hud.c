@@ -1,6 +1,7 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include "hud.h"
 #include "console_font.h"
+#include "textures/Pl_cycle1.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -80,7 +81,7 @@ void drawStatusBar(void (*pixelFunc)(int, int, int, int, int),
 
 // Draw HUD elements
 void drawHUD(void (*pixelFunc)(int, int, int, int, int), 
-             int screenWidth, int screenHeight) {
+             int screenWidth, int screenHeight, int currentTime) {
     if (!hudEnabled) return;
     
     // Bottom-left corner for health/armor bars
@@ -176,6 +177,53 @@ void drawHUD(void (*pixelFunc)(int, int, int, int, int),
     }
     if (!enemiesEnabled) {
         drawString(statusX, statusY, "NOTARGET", 0, 255, 0, pixelFunc);
+    }
+    
+    // Draw player face (Doom-style status bar face)
+    // Calculate which frame to show based on time
+    int totalCycleTime = 0;
+    for (int i = 0; i < PL_CYCLE1_FRAME_COUNT; i++) {
+        totalCycleTime += PL_CYCLE1_frame_durations[i];
+    }
+    
+    int cyclePos = currentTime % totalCycleTime;
+    
+    // Find which frame to display
+    int currentFrame = 0;
+    int accumulatedTime = 0;
+    for (int i = 0; i < PL_CYCLE1_FRAME_COUNT; i++) {
+        if (cyclePos < accumulatedTime + PL_CYCLE1_frame_durations[i]) {
+            currentFrame = i;
+            break;
+        }
+        accumulatedTime += PL_CYCLE1_frame_durations[i];
+    }
+    
+    // Draw the face (bottom center of screen)
+    int faceWidth = PL_CYCLE1_frame_widths[currentFrame];
+    int faceHeight = PL_CYCLE1_frame_heights[currentFrame];
+    const unsigned char* faceData = PL_CYCLE1_frames[currentFrame];
+    
+    // Position: bottom center, just above the health bar
+    int faceX = (screenWidth - faceWidth) / 2;
+    int faceY = margin + 5; // Just above health bar
+    
+    // Draw the face sprite
+    for (int y = 0; y < faceHeight; y++) {
+        for (int x = 0; x < faceWidth; x++) {
+            int pixelIndex = (y * faceWidth + x) * 3;
+            int r = faceData[pixelIndex + 0];
+            int g = faceData[pixelIndex + 1];
+            int b = faceData[pixelIndex + 2];
+            
+            // Skip transparent pixels (1, 0, 0)
+            if (r == 1 && g == 0 && b == 0) continue;
+            
+            // Flip vertically for correct display
+            int drawY = faceY + (faceHeight - 1 - y);
+            
+            pixelFunc(faceX + x, drawY, r, g, b);
+        }
     }
 }
 

@@ -10,6 +10,7 @@
 
 // Consolidated texture includes
 #include "textures/all_textures.h"
+#include "textures/skybox.h"
 
 // Console module
 #include "console.h"
@@ -99,6 +100,7 @@ void load()
 		fscanf(fp, "%i", &S[s].z2);
 		fscanf(fp, "%i", &S[s].st);
 		fscanf(fp, "%i", &S[s].ss);
+		fscanf(fp, "%i", &S[s].tag);
 	}
 	fscanf(fp, "%i", &numWall);   //number of walls 
 	for (s = 0; s < numWall; s++)      //load all walls
@@ -198,14 +200,30 @@ void movePl()
 		if (!checkWallCollision(newX, newY)) {
 			P.x = newX;
 			P.y = newY;
+			
+			// Update height based on sector
+			int s = getSector(P.x, P.y);
+			if (s != -1) {
+				int oldZ = P.z;
+				P.z = S[s].z1 + 20; // Floor height + Eye height
+				if (oldZ != P.z) {
+					printf("Entered Sector %d. Z changed from %d to %d\n", s, oldZ, P.z);
+				}
+			} else {
+				// printf("Warning: Player in Void Sector at %d, %d\n", P.x, P.y);
+			}
 		}
 		else {
 			// Try sliding along walls by testing X and Y movement separately
 			if (!checkWallCollision(newX, oldY)) {
 				P.x = newX; // Can move in X direction
+				int s = getSector(P.x, P.y);
+				if (s != -1) P.z = S[s].z1 + 20;
 			}
 			else if (!checkWallCollision(oldX, newY)) {
 				P.y = newY; // Can move in Y direction
+				int s = getSector(P.x, P.y);
+				if (s != -1) P.z = S[s].z1 + 20;
 			}
 			// else: blocked completely, don't move
 		}
@@ -264,9 +282,59 @@ float pointToLineDistance(int px, int py, int x1, int y1, int x2, int y2) {
 	return sqrt(distX * distX + distY * distY);
 }
 
+// Check if a point is inside a polygon (sector)
+// Uses Ray Casting algorithm
+int isPointInSector(int x, int y, int s) {
+    int i, j, c = 0;
+    for (i = S[s].ws, j = S[s].we - 1; i < S[s].we; j = i++) {
+        if (((W[i].y1 > y) != (W[j].y1 > y)) &&
+            (x < (W[j].x1 - W[i].x1) * (y - W[i].y1) / (float)(W[j].y1 - W[i].y1) + W[i].x1)) {
+            c = !c;
+        }
+    }
+    return c;
+}
+
+// Find which sector a point belongs to
+// Returns -1 if not in any sector (void)
+int getSector(int x, int y) {
+    int s;
+    for (s = 0; s < numSect; s++) {
+        if (isPointInSector(x, y, s)) {
+            return s;
+        }
+    }
+    return -1;
+}
+
+// Helper: Find if a wall has a neighbor sector (is a portal)
+// Returns the neighbor sector index, or -1 if none (solid wall)
+int findNeighborSector(int wallIndex) {
+    int x1 = W[wallIndex].x1;
+    int y1 = W[wallIndex].y1;
+    int x2 = W[wallIndex].x2;
+    int y2 = W[wallIndex].y2;
+    
+    int s, w;
+    for (s = 0; s < numSect; s++) {
+        for (w = S[s].ws; w < S[s].we; w++) {
+            if (w == wallIndex) continue; // Skip self
+            
+            // Check for match (reversed or same)
+            if ((W[w].x1 == x1 && W[w].y1 == y1 && W[w].x2 == x2 && W[w].y2 == y2) ||
+                (W[w].x1 == x2 && W[w].y1 == y2 && W[w].x2 == x1 && W[w].y2 == y1)) {
+                return s;
+            }
+        }
+    }
+    return -1;
+}
+
 // Check if moving from (x1,y1) collides with any wall
+// Updated to support stairs/portals
 int checkWallCollision(int newX, int newY) {
 	int s, w;
+	int mySector = getSector(P.x, P.y);
 	
 	// Check against all walls in all sectors
 	for (s = 0; s < numSect; s++) {
@@ -276,7 +344,37 @@ int checkWallCollision(int newX, int newY) {
 			
 			// If distance is less than player radius, collision detected
 			if (distance < PLAYER_RADIUS) {
-				return 1; // Collision detected
+				// Check if it's a portal (stair/window)
+				int neighbor = findNeighborSector(w);
+				
+				if (neighbor != -1) {
+					// It's a portal! Check if we can pass.
+					
+					// Determine start and end heights
+					int srcSector = (s == mySector) ? s : neighbor;
+					int dstSector = (s == mySector) ? neighbor : s;
+					
+					// Only allow if we are actually crossing between these two
+					if (mySector != s && mySector != neighbor) {
+						return 1;
+					}
+
+					// Check Step Height
+					int stepHeight = S[dstSector].z1 - S[srcSector].z1;
+					
+					// DEBUG: Print portal info
+					printf("Portal: Sec %d -> %d. Floor %d -> %d. Diff %d\n", srcSector, dstSector, S[srcSector].z1, S[dstSector].z1, stepHeight);
+					
+					if (S[dstSector].tag == 1 || abs(stepHeight) <= 24) { // Max step up/down is 24 units, OR explicit stair override
+						// Check Gap Height (Ceiling - Floor)
+						// Must fit player (e.g. 40 units)
+						if (S[dstSector].z2 - S[dstSector].z1 >= 32) {
+							continue; // Allow passage!
+						}
+					}
+				}
+				
+				return 1; // Solid wall or blocking portal
 			}
 		}
 	}
@@ -493,6 +591,95 @@ void draw3D() {
 				S[w] = S[w + 1];
 				S[w + 1] = st;
 			}
+		}
+	}
+
+
+	// Draw skybox (Doom-style: heavily tiled horizontal parallax)
+	// Concatenate all 4 horizontal faces into one long texture strip
+	// Total width = 4 faces * 256 = 1024 pixels
+	int SKYBOX_TOTAL_WIDTH = 1024;
+	int SKYBOX_HEIGHT = 256;
+	
+	for (int x = 0; x < SW; x++) {
+		// Doom-style: tile 8 times for dense parallax (45 degrees per tile)
+		int skyAngle = ((P.a * 8 + (x * 360) / SW)) % 360;
+		if (skyAngle < 0) skyAngle += 360;
+		
+		// Map angle to pixel coordinate across all 4 faces (1024 pixels total)
+		int skyU = (skyAngle * SKYBOX_TOTAL_WIDTH) / 360;
+		if (skyU < 0) skyU = 0;
+		if (skyU >= SKYBOX_TOTAL_WIDTH) skyU = skyU % SKYBOX_TOTAL_WIDTH;
+		
+		// Determine which face and local U coordinate
+		int faceIndex;
+		int localU;
+		if (skyU < 256) {
+			faceIndex = SKYBOX_FACE_FRONT;
+			localU = skyU;
+		} else if (skyU < 512) {
+			faceIndex = SKYBOX_FACE_RIGHT;
+			localU = skyU - 256;
+		} else if (skyU < 768) {
+			faceIndex = SKYBOX_FACE_BACK;
+			localU = skyU - 512;
+		} else {
+			faceIndex = SKYBOX_FACE_LEFT;
+			localU = skyU - 768;
+		}
+		
+		const SkyboxFaceData* face = &SKYBOX_FACES[faceIndex];
+		
+		// Sky fills upper portion of screen (above horizon)
+		int horizonY = SH / 2 - P.l;
+		
+		for (int y = 0; y < horizonY && y < SH; y++) {
+			// Tile vertically with 2x repeat (Doom-style)
+			int skyV = (y * 2) % SKYBOX_HEIGHT;
+			
+			// Use up face when looking up significantly
+			const SkyboxFaceData* activeFace = face;
+			int texU = localU;
+			int texV = skyV;
+			
+			if (P.l > 40 && y < horizonY / 3) {
+				// Switch to up face for top portion when looking up
+				activeFace = &SKYBOX_FACES[SKYBOX_FACE_UP];
+				texU = localU % activeFace->width;
+				texV = (y * 3) % activeFace->height;
+			}
+			
+			// Clamp coordinates
+			if (texU >= activeFace->width) texU = activeFace->width - 1;
+			if (texV >= activeFace->height) texV = activeFace->height - 1;
+			
+			// Get pixel from texture
+			int pixelIndex = (texV * activeFace->width + texU) * 3;
+			int r = activeFace->data[pixelIndex + 0];
+			int g = activeFace->data[pixelIndex + 1];
+			int b = activeFace->data[pixelIndex + 2];
+			
+			// Strong atmospheric perspective (layered fog)
+			float depth = (float)y / (horizonY > 0 ? horizonY : 1);
+			depth = depth * depth;
+			
+			// Fog darkening (0.7 = 70% darker at top)
+			float brightness = 1.0f - (depth * 0.7f);
+			
+			// Desaturation (blend to gray)
+			int gray = (r + g + b) / 3;
+			float saturation = 1.0f - (depth * 0.8f);
+			
+			r = (int)(r * saturation + gray * (1.0f - saturation)) * brightness;
+			g = (int)(g * saturation + gray * (1.0f - saturation)) * brightness;
+			b = (int)(b * saturation + gray * (1.0f - saturation)) * brightness;
+			
+			// Clamp
+			if (r < 0) r = 0; if (r > 255) r = 255;
+			if (g < 0) g = 0; if (g > 255) g = 255;
+			if (b < 0) b = 0; if (b > 255) b = 255;
+			
+			pixel(x, SH - y - 1, r, g, b);
 		}
 	}
 
@@ -1195,7 +1382,7 @@ void display() {
 				drawKillStreakMessage(pixel, SW, SH, T.fr1);
 				
 				// Draw HUD (health, armor, etc.)
-				drawHUD(pixel, SW, SH);
+				drawHUD(pixel, SW, SH, T.fr1);
 				
 				// Draw weapon HUD (ammo count)
 				drawWeaponHUD(pixel, SW, SH);
@@ -1244,6 +1431,13 @@ void display() {
 			// Update and draw screen melt effect on top of everything (modular)
 			updateScreenMelt();
 			drawScreenMelt(pixel, SW, SH);
+			
+			// Start background music once after screen melt completes
+			static int musicStarted = 0;
+			if (!musicStarted && isMeltComplete()) {
+				playBackgroundMusic();
+				musicStarted = 1;
+			}
 		}
 		
 		T.fr2 = T.fr1;
@@ -1336,6 +1530,7 @@ void KeysDown(unsigned char key, int x, int y)
 	if (key == 13) { 
 		load(); // Reload level
 		startScreenMelt(); // Start melt effect (modular)
+		playBackgroundMusic(); // Start E1M1 music
 	}
 }
 
