@@ -172,6 +172,37 @@ int fireWeapon(int enemyIndex, int currentTime) {
     weapon.lastFireTime = currentTime;
     weapon.muzzleFlashTime = currentTime;
     
+    // Apply weapon kickback (push player backward)
+    extern player P;
+    extern math M;
+    
+    // Get kickback strength based on weapon type
+    int kickbackStrength = 0;
+    switch (weapon.currentWeapon) {
+        case WEAPON_FIST:
+            kickbackStrength = 1;  // Very light kickback
+            break;
+        case WEAPON_PISTOL:
+            kickbackStrength = 3;  // Moderate kickback
+            break;
+        case WEAPON_SHOTGUN:
+            kickbackStrength = 8;  // Strong kickback
+            break;
+        case WEAPON_CHAINGUN:
+            kickbackStrength = 2;  // Light but rapid fire
+            break;
+    }
+    
+    // Apply kickback in the direction opposite to player's facing
+    if (kickbackStrength > 0) {
+        // Calculate backward direction (opposite of facing angle)
+        float backwardX = -M.sin[P.a] * kickbackStrength;
+        float backwardY = -M.cos[P.a] * kickbackStrength;
+        
+        P.x += (int)backwardX;
+        P.y += (int)backwardY;
+    }
+    
     // Apply damage to enemy if one is targeted
     if (enemyIndex >= 0) {
         int damage = getWeaponDamage(weapon.currentWeapon);

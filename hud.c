@@ -2,6 +2,10 @@
 #include "hud.h"
 #include "console_font.h"
 #include "textures/Pl_cycle1.h"
+#include "textures/Pl_cycle2.h"
+#include "textures/Pl_cycle3.h"
+#include "textures/Pl_cycle4.h"
+#include "textures/Pl_cycle5.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -180,10 +184,56 @@ void drawHUD(void (*pixelFunc)(int, int, int, int, int),
     }
     
     // Draw player face (Doom-style status bar face)
+    // Select which cycle sprite to use based on health percentage (reuse healthPercent from above)
+    
+    // Determine which cycle dataset to use
+    const unsigned char** cycleFrames;
+    const int* frameWidths;
+    const int* frameHeights;
+    const int* frameDurations;
+    int frameCount;
+    
+    if (healthPercent > 0.8f) {
+        // 100-80% health: Cycle 1 (healthy)
+        cycleFrames = PL_CYCLE1_frames;
+        frameWidths = PL_CYCLE1_frame_widths;
+        frameHeights = PL_CYCLE1_frame_heights;
+        frameDurations = PL_CYCLE1_frame_durations;
+        frameCount = PL_CYCLE1_FRAME_COUNT;
+    } else if (healthPercent > 0.6f) {
+        // 80-60% health: Cycle 2 (slightly hurt)
+        cycleFrames = PL_CYCLE2_frames;
+        frameWidths = PL_CYCLE2_frame_widths;
+        frameHeights = PL_CYCLE2_frame_heights;
+        frameDurations = PL_CYCLE2_frame_durations;
+        frameCount = PL_CYCLE2_FRAME_COUNT;
+    } else if (healthPercent > 0.4f) {
+        // 60-40% health: Cycle 3 (hurt)
+        cycleFrames = PL_CYCLE3_frames;
+        frameWidths = PL_CYCLE3_frame_widths;
+        frameHeights = PL_CYCLE3_frame_heights;
+        frameDurations = PL_CYCLE3_frame_durations;
+        frameCount = PL_CYCLE3_FRAME_COUNT;
+    } else if (healthPercent > 0.2f) {
+        // 40-20% health: Cycle 4 (badly hurt)
+        cycleFrames = PL_CYCLE4_frames;
+        frameWidths = PL_CYCLE4_frame_widths;
+        frameHeights = PL_CYCLE4_frame_heights;
+        frameDurations = PL_CYCLE4_frame_durations;
+        frameCount = PL_CYCLE4_FRAME_COUNT;
+    } else {
+        // Below 20% health: Cycle 5 (critical)
+        cycleFrames = PL_CYCLE5_frames;
+        frameWidths = PL_CYCLE5_frame_widths;
+        frameHeights = PL_CYCLE5_frame_heights;
+        frameDurations = PL_CYCLE5_frame_durations;
+        frameCount = PL_CYCLE5_FRAME_COUNT;
+    }
+    
     // Calculate which frame to show based on time
     int totalCycleTime = 0;
-    for (int i = 0; i < PL_CYCLE1_FRAME_COUNT; i++) {
-        totalCycleTime += PL_CYCLE1_frame_durations[i];
+    for (int i = 0; i < frameCount; i++) {
+        totalCycleTime += frameDurations[i];
     }
     
     int cyclePos = currentTime % totalCycleTime;
@@ -191,18 +241,18 @@ void drawHUD(void (*pixelFunc)(int, int, int, int, int),
     // Find which frame to display
     int currentFrame = 0;
     int accumulatedTime = 0;
-    for (int i = 0; i < PL_CYCLE1_FRAME_COUNT; i++) {
-        if (cyclePos < accumulatedTime + PL_CYCLE1_frame_durations[i]) {
+    for (int i = 0; i < frameCount; i++) {
+        if (cyclePos < accumulatedTime + frameDurations[i]) {
             currentFrame = i;
             break;
         }
-        accumulatedTime += PL_CYCLE1_frame_durations[i];
+        accumulatedTime += frameDurations[i];
     }
     
     // Draw the face (bottom center of screen)
-    int faceWidth = PL_CYCLE1_frame_widths[currentFrame];
-    int faceHeight = PL_CYCLE1_frame_heights[currentFrame];
-    const unsigned char* faceData = PL_CYCLE1_frames[currentFrame];
+    int faceWidth = frameWidths[currentFrame];
+    int faceHeight = frameHeights[currentFrame];
+    const unsigned char* faceData = cycleFrames[currentFrame];
     
     // Position: bottom center, just above the health bar
     int faceX = (screenWidth - faceWidth) / 2;

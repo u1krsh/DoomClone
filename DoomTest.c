@@ -201,29 +201,34 @@ void movePl()
 			P.x = newX;
 			P.y = newY;
 			
-			// Update height based on sector
+			// Update height based on sector - only step UP or stay level, don't snap down
 			int s = getSector(P.x, P.y);
 			if (s != -1) {
-				int oldZ = P.z;
-				P.z = S[s].z1 + 20; // Floor height + Eye height
-				if (oldZ != P.z) {
-					printf("Entered Sector %d. Z changed from %d to %d\n", s, oldZ, P.z);
+				int currentFeet = P.z - 20;
+				int newFloor = S[s].z1;
+				
+				// Only update Z if: stepping up OR the floor is at/above our feet
+				// This prevents getting sucked down at sector edges
+				if (newFloor >= currentFeet) {
+					int oldZ = P.z;
+					P.z = newFloor + 20; // Floor height + Eye height
+					if (oldZ != P.z) {
+						printf("STEP: Sector %d, floor %d. Z: %d -> %d\n", s, newFloor, oldZ, P.z);
+					}
 				}
-			} else {
-				// printf("Warning: Player in Void Sector at %d, %d\n", P.x, P.y);
 			}
 		}
 		else {
 			// Try sliding along walls by testing X and Y movement separately
 			if (!checkWallCollision(newX, oldY)) {
-				P.x = newX; // Can move in X direction
+				P.x = newX;
 				int s = getSector(P.x, P.y);
-				if (s != -1) P.z = S[s].z1 + 20;
+				if (s != -1 && S[s].z1 >= (P.z - 20)) P.z = S[s].z1 + 20;
 			}
 			else if (!checkWallCollision(oldX, newY)) {
-				P.y = newY; // Can move in Y direction
+				P.y = newY;
 				int s = getSector(P.x, P.y);
-				if (s != -1) P.z = S[s].z1 + 20;
+				if (s != -1 && S[s].z1 >= (P.z - 20)) P.z = S[s].z1 + 20;
 			}
 			// else: blocked completely, don't move
 		}
@@ -283,12 +288,16 @@ float pointToLineDistance(int px, int py, int x1, int y1, int x2, int y2) {
 }
 
 // Check if a point is inside a polygon (sector)
-// Uses Ray Casting algorithm
+// Uses Ray Casting with actual wall edges (x1,y1 -> x2,y2)
 int isPointInSector(int x, int y, int s) {
-    int i, j, c = 0;
-    for (i = S[s].ws, j = S[s].we - 1; i < S[s].we; j = i++) {
-        if (((W[i].y1 > y) != (W[j].y1 > y)) &&
-            (x < (W[j].x1 - W[i].x1) * (y - W[i].y1) / (float)(W[j].y1 - W[i].y1) + W[i].x1)) {
+    int c = 0;
+    for (int i = S[s].ws; i < S[s].we; i++) {
+        int x1 = W[i].x1, y1 = W[i].y1;
+        int x2 = W[i].x2, y2 = W[i].y2;
+        
+        // Ray casting: count crossings of horizontal ray to the right
+        if (((y1 > y) != (y2 > y)) &&
+            (x < (x2 - x1) * (y - y1) / (float)(y2 - y1) + x1)) {
             c = !c;
         }
     }
@@ -296,15 +305,22 @@ int isPointInSector(int x, int y, int s) {
 }
 
 // Find which sector a point belongs to
-// Returns -1 if not in any sector (void)
+// Returns sector with highest floor among all containing the point
+// This properly handles overlapping stair sectors
 int getSector(int x, int y) {
-    int s;
-    for (s = 0; s < numSect; s++) {
+    int bestSector = -1;
+    int bestFloor = -99999;
+    
+    for (int s = 0; s < numSect; s++) {
         if (isPointInSector(x, y, s)) {
-            return s;
+            // For overlapping sectors, pick highest floor
+            if (S[s].z1 > bestFloor) {
+                bestFloor = S[s].z1;
+                bestSector = s;
+            }
         }
     }
-    return -1;
+    return bestSector;
 }
 
 // Helper: Find if a wall has a neighbor sector (is a portal)
@@ -330,51 +346,34 @@ int findNeighborSector(int wallIndex) {
     return -1;
 }
 
-// Check if moving from (x1,y1) collides with any wall
-// Updated to support stairs/portals
+// Check if moving collides with any wall
+// Simple collision: solid walls block, stair portals (tag=1) always passable
 int checkWallCollision(int newX, int newY) {
-	int s, w;
-	int mySector = getSector(P.x, P.y);
+	int currentSector = getSector(P.x, P.y);
+	int destSector = getSector(newX, newY);
 	
-	// Check against all walls in all sectors
-	for (s = 0; s < numSect; s++) {
-		for (w = S[s].ws; w < S[s].we; w++) {
-			// Calculate distance from new position to this wall
+	// Check all walls
+	for (int s = 0; s < numSect; s++) {
+		for (int w = S[s].ws; w < S[s].we; w++) {
 			float distance = pointToLineDistance(newX, newY, W[w].x1, W[w].y1, W[w].x2, W[w].y2);
-			
-			// If distance is less than player radius, collision detected
 			if (distance < PLAYER_RADIUS) {
-				// Check if it's a portal (stair/window)
+				// Check if it's a portal
 				int neighbor = findNeighborSector(w);
 				
-				if (neighbor != -1) {
-					// It's a portal! Check if we can pass.
-					
-					// Determine start and end heights
-					int srcSector = (s == mySector) ? s : neighbor;
-					int dstSector = (s == mySector) ? neighbor : s;
-					
-					// Only allow if we are actually crossing between these two
-					if (mySector != s && mySector != neighbor) {
-						return 1;
-					}
-
-					// Check Step Height
-					int stepHeight = S[dstSector].z1 - S[srcSector].z1;
-					
-					// DEBUG: Print portal info
-					printf("Portal: Sec %d -> %d. Floor %d -> %d. Diff %d\n", srcSector, dstSector, S[srcSector].z1, S[dstSector].z1, stepHeight);
-					
-					if (S[dstSector].tag == 1 || abs(stepHeight) <= 24) { // Max step up/down is 24 units, OR explicit stair override
-						// Check Gap Height (Ceiling - Floor)
-						// Must fit player (e.g. 40 units)
-						if (S[dstSector].z2 - S[dstSector].z1 >= 32) {
-							continue; // Allow passage!
-						}
-					}
+				if (neighbor == -1) {
+					return 1; // Solid wall - blocks
 				}
 				
-				return 1; // Solid wall or blocking portal
+				// Portal - if either side has stairs tag, allow passage
+				if (S[s].tag == 1 || S[neighbor].tag == 1) {
+					continue; // Stair portal - passable
+				}
+				
+				// Normal portal - check step height (max 24 units)
+				int stepHeight = S[neighbor].z1 - S[s].z1;
+				if (stepHeight > 24 || stepHeight < -24) {
+					return 1; // Step too high
+				}
 			}
 		}
 	}
