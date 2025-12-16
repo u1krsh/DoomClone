@@ -11,6 +11,7 @@
 // Consolidated texture includes
 #include "textures/all_textures.h"
 #include "textures/skybox.h"
+#include "textures/floor1.h"
 
 // Console module
 #include "console.h"
@@ -601,14 +602,23 @@ void draw3D() {
 	int SKYBOX_HEIGHT = 256;
 	
 	for (int x = 0; x < SW; x++) {
-		// Doom-style: tile 8 times for dense parallax (45 degrees per tile)
-		int skyAngle = ((P.a * 8 + (x * 360) / SW)) % 360;
-		if (skyAngle < 0) skyAngle += 360;
+		// Calculate sky angle based on 60-degree FOV with floating point precision
+		// Tile 2x horizontally (720 degrees total) to increase effective resolution 
+		// and match screen pixels better (341 texels vs 320 pixels)
+		float angleOffset = -30.0f + ((float)x * 60.0f) / (float)SW; 
+		float skyAngle = (float)P.a + angleOffset;
 		
-		// Map angle to pixel coordinate across all 4 faces (1024 pixels total)
-		int skyU = (skyAngle * SKYBOX_TOTAL_WIDTH) / 360;
+		// Normalize angle
+		while (skyAngle < 0.0f) skyAngle += 360.0f;
+		while (skyAngle >= 360.0f) skyAngle -= 360.0f;
+		
+		// Map angle to pixel coordinate
+		// Using 2x tiling: map 0-360 degrees to 0-2048 texture pixels (wrapping at 1024)
+		int skyU = (int)((skyAngle * SKYBOX_TOTAL_WIDTH * 2) / 360.0f);
+		
 		if (skyU < 0) skyU = 0;
-		if (skyU >= SKYBOX_TOTAL_WIDTH) skyU = skyU % SKYBOX_TOTAL_WIDTH;
+		// Wrap around texture width
+		skyU = skyU % SKYBOX_TOTAL_WIDTH;
 		
 		// Determine which face and local U coordinate
 		int faceIndex;
@@ -633,8 +643,9 @@ void draw3D() {
 		int horizonY = SH / 2 - P.l;
 		
 		for (int y = 0; y < horizonY && y < SH; y++) {
-			// Tile vertically with 2x repeat (Doom-style)
-			int skyV = (y * 2) % SKYBOX_HEIGHT;
+			// No vertical tiling - stretch to fit
+			int skyV = (y * SKYBOX_HEIGHT) / (horizonY > 0 ? horizonY : 1);
+			if (skyV >= SKYBOX_HEIGHT) skyV = SKYBOX_HEIGHT - 1;
 			
 			// Use up face when looking up significantly
 			const SkyboxFaceData* activeFace = face;
@@ -678,7 +689,7 @@ void draw3D() {
 			if (g < 0) g = 0; if (g > 255) g = 255;
 			if (b < 0) b = 0; if (b > 255) b = 255;
 			
-			pixel(x, SH - y - 1, r, g, b);
+		pixel(x, SH - y - 1, r, g, b);
 		}
 	}
 
@@ -1067,9 +1078,8 @@ void drawConsoleText() {
 	}
 	
 	int fontScale = 1;
-	if (SH >= 480) fontScale = 2;
-	if (SH >= 720) fontScale = 3;
-	if (SH >= 1080) fontScale = 4;
+	if (SH >= 720) fontScale = 2;
+	if (SH >= 1080) fontScale = 3;
 	
 	int lineHeight = 10 * fontScale;
 	
@@ -1760,6 +1770,11 @@ void init() {
 	Textures[8].w = WALL58_FRAME_WIDTH;
 	Textures[8].h = WALL58_FRAME_HEIGHT;
 	Textures[8].name = WALL58_frame_0;  // Start with first frame
+	
+	// Initialize floor texture 9 (FLOOR1 - 64x64)
+	Textures[9].w = FLOOR1_WIDTH;
+	Textures[9].h = FLOOR1_HEIGHT;
+	Textures[9].name = FLOOR1;
 
 	// Load the map automatically at startup
 	load();
