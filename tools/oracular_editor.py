@@ -521,6 +521,14 @@ class OracularEditor:
             s = pygame.Surface((64, 64)); s.fill((255, 0, 255))
             self.enemy_textures.append(Texture("BOSSA3 (MISSING)", [s]))
             
+        # Cacodemon (Index 3)
+        cace_frames = self.parse_texture_file("cace_stat.h", ["CACE_STAT"])
+        if cace_frames:
+            self.enemy_textures.append(Texture("Cacodemon", cace_frames))
+        else:
+            s = pygame.Surface((64, 64)); s.fill((255, 50, 0)) # Orange/Red
+            self.enemy_textures.append(Texture("Cacodemon (MISSING)", [s]))
+            
         print(f"Loaded {len(self.enemy_textures)} enemy textures.")
 
         # 5. Load Pickup Textures
@@ -2847,6 +2855,7 @@ class OracularEditor:
                 color = (255, 0, 0)
                 if enemy.enemy_type == 1: color = (0, 255, 255)
                 elif enemy.enemy_type == 2: color = (255, 0, 255)
+                elif enemy.enemy_type == 3: color = (255, 50, 0)
                 
                 rect = pygame.Rect(screen_x - size//2, screen_y - size//2, size, size)
                 

@@ -871,6 +871,14 @@ void drawEnemies() {
 				frameHeight = BOSSA3_DIE_frame_heights[frameIdx];
 				spriteData = BOSSA3_DIE_frames[frameIdx];
 			}
+			else if (enemies[i].enemyType == ENEMY_TYPE_CACE) {
+				int frameIdx = enemies[i].animFrame;
+				if (frameIdx >= CACE_DIE_FRAME_COUNT) frameIdx = CACE_DIE_FRAME_COUNT - 1;
+				
+				frameWidth = CACE_DIE_frame_widths[frameIdx];
+				frameHeight = CACE_DIE_frame_heights[frameIdx];
+				spriteData = CACE_DIE_frames[frameIdx];
+			}
 			else {
 				// Fallback for other bosses if they don't have death anims yet
 				frameWidth = BOSSA1_DIE_frame_widths[0];
@@ -896,6 +904,12 @@ void drawEnemies() {
 					frameWidth = BOSSA3_ATTACK_frame_widths[currentFrame];
 					frameHeight = BOSSA3_ATTACK_frame_heights[currentFrame];
 					spriteData = BOSSA3_ATTACK_frames[currentFrame];
+					break;
+				case ENEMY_TYPE_CACE:
+					currentFrame = currentFrame % CACE_ATTACK_FRAME_COUNT;
+					frameWidth = CACE_ATTACK_frame_widths[currentFrame];
+					frameHeight = CACE_ATTACK_frame_heights[currentFrame];
+					spriteData = CACE_ATTACK_frames[currentFrame];
 					break;
 				default:
 					currentFrame = currentFrame % BOSSA1_ATTACK_FRAME_COUNT;
@@ -934,6 +948,12 @@ void drawEnemies() {
 					else if (currentFrame == 1) spriteData = BOSSA3_frame_1;
 					else if (currentFrame == 2) spriteData = BOSSA3_frame_2;
 					else spriteData = BOSSA3_frame_3;
+					break;
+					
+				case ENEMY_TYPE_CACE:
+					frameWidth = CACE_STAT_WIDTH;
+					frameHeight = CACE_STAT_HEIGHT;
+					spriteData = CACE_STAT;
 					break;
 					
 				default:
@@ -996,8 +1016,9 @@ void drawEnemies() {
 			for (x = startX; x < endX; x++) {
 				if (x < 0 || x >= SW) continue;
 				
-				// Depth test - only draw if sprite is closer than wall
-				if (camY > depthBuffer[x]) continue;
+				// Depth test - with bias to prevent wall clipping
+				// Allow enemy to be slightly "inside" the wall (20 units bias)
+				if (camY > depthBuffer[x] + 20) continue;
 				
 				// Calculate texture coordinates
 				float u = (float)(x - startX) / (float)spriteWidth;
@@ -1052,8 +1073,8 @@ void drawEnemies() {
 				
 				pixel(x, y, r, g, b);
 				
-				// Update depth buffer
-				depthBuffer[x] = camY;
+				// DO NOT update depth buffer for enemies
+				// depthBuffer[x] = camY; 
 			}
 		}
 	}
@@ -1778,6 +1799,9 @@ void init() {
 
 	// Load the map automatically at startup
 	load();
+	
+	// TEST: Spawn a Cacodemon for testing
+	addEnemyType(P.x + 200, P.y + 200, 0, ENEMY_TYPE_CACE);
 	
 	// Initialize screen melt effect (but don't start it yet - wait for Enter key)
 	initScreenMelt();

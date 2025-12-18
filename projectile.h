@@ -5,21 +5,25 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "data_types.h"
+#include "textures/cace_fire.h"
 
 // Types
 #define PROJ_TYPE_PLASMA 0
 #define PROJ_TYPE_BULLET 1
 #define PROJ_TYPE_SHELL 2
+#define PROJ_TYPE_FIREBALL 3
 
 // Constants
 #define MAX_PROJECTILES 64
 #define PLASMA_SPEED 8
 #define BULLET_SPEED 16
 #define SHELL_SPEED 6 
+#define FIREBALL_SPEED 7
 
 #define PLASMA_DAMAGE 10
 #define BULLET_DAMAGE 3
 #define SHELL_DAMAGE 2 
+#define FIREBALL_DAMAGE 12
 
 #define PROJ_RADIUS 4
 
@@ -47,8 +51,9 @@ extern math M;
 extern float depthBuffer[];
 extern void damagePlayer(int damage, int currentTime);
 extern void pixel(int x, int y, int r, int g, int b);
+extern DoomTime T; // Access global time struct
 
-// Helper function: Distance from point to line segment (Copied helper logic)
+// Helper function: Distance from point to line segment
 static float proj_pointToLineDistance(int px, int py, int x1, int y1, int x2, int y2) {
     int dx = x2 - x1;
     int dy = y2 - y1;
@@ -103,6 +108,7 @@ void spawnProjectile(float x, float y, float z, float angle, int type, int curre
          float spread = ((rand()%20) - 10) * 0.005f; 
          angle += spread;
     }
+    else if (type == PROJ_TYPE_FIREBALL) speed = FIREBALL_SPEED;
 
     projectiles[slot].dx = sin(angle) * speed;
     projectiles[slot].dy = cos(angle) * speed;
@@ -114,16 +120,15 @@ void spawnProjectile(float x, float y, float z, float angle, int type, int curre
     float timeToHit = dist2D / speed;
     
     if (timeToHit > 0) {
-        // Aim at player's Z (camera/eye height)
-        // Add slight randomness to Z to vary it? No, straight shot for now.
         projectiles[slot].dz = (P.z - z) / timeToHit;
     } else {
         projectiles[slot].dz = 0;
     }
 
-    projectiles[slot].damage = (type == PROJ_TYPE_PLASMA) ? PLASMA_DAMAGE : 
-                               (type == PROJ_TYPE_BULLET) ? BULLET_DAMAGE : SHELL_DAMAGE;
-                               (type == PROJ_TYPE_BULLET) ? BULLET_DAMAGE : SHELL_DAMAGE;
+    if (type == PROJ_TYPE_PLASMA) projectiles[slot].damage = PLASMA_DAMAGE;
+    else if (type == PROJ_TYPE_BULLET) projectiles[slot].damage = BULLET_DAMAGE;
+    else if (type == PROJ_TYPE_SHELL) projectiles[slot].damage = SHELL_DAMAGE;
+    else if (type == PROJ_TYPE_FIREBALL) projectiles[slot].damage = FIREBALL_DAMAGE;
 }
 
 void updateProjectiles(int currentTime) {
@@ -179,6 +184,7 @@ void updateProjectiles(int currentTime) {
 void drawProjectiles() {
     float CS = M.cos[P.a];
     float SN = M.sin[P.a];
+    int currentTime = T.fr1;
 
     for (int i = 0; i < MAX_PROJECTILES; i++) {
         if (!projectiles[i].active) continue;
@@ -203,6 +209,10 @@ void drawProjectiles() {
         // Size
         float scale = 200.0f / camY;
         int size = (int)(PROJ_RADIUS * 2 * scale);
+        
+        // Make fireball slightly bigger
+        if (projectiles[i].type == PROJ_TYPE_FIREBALL) size = (int)(size * 2.5f);
+        
         if (size < 2) size = 2;
 
         int startX = screenX - size/2;
@@ -219,10 +229,20 @@ void drawProjectiles() {
             texW = BOSSA1_PROJ_WIDTH;
             texH = BOSSA1_PROJ_HEIGHT;
         }
+        else if (projectiles[i].type == PROJ_TYPE_FIREBALL) {
+            // Animated Fireball
+            int animTime = currentTime - projectiles[i].spawnTime;
+            int frame = (animTime / CACE_FIRE_FRAME_MS) % CACE_FIRE_FRAME_COUNT;
+            
+            projTexture = CACE_FIRE_frames[frame];
+            texW = CACE_FIRE_frame_widths[frame];
+            texH = CACE_FIRE_frame_heights[frame];
+        }
 
         int pr, pg, pb;
         if (projectiles[i].type == PROJ_TYPE_PLASMA) { pr=0; pg=255; pb=0; }
         else if (projectiles[i].type == PROJ_TYPE_BULLET) { pr=255; pg=255; pb=0; }
+        else if (projectiles[i].type == PROJ_TYPE_FIREBALL) { pr=255; pg=0; pb=0; }
         else { pr=255; pg=100; pb=0; } // Shell
 
         for (int y = startY; y < endY; y++) {
@@ -241,9 +261,7 @@ void drawProjectiles() {
                          if (tx < 0) tx = 0; if (tx >= texW) tx = texW - 1;
                          if (ty < 0) ty = 0; if (ty >= texH) ty = texH - 1;
                          
-                         // Flip vertically to match texture coordinate system if needed
-                         // Assuming standard top-down Y for loop but texture might be bottom-up or top-down
-                         // Based on drawEnemies: ty = frameHeight - 1 - ty;
+                         // Flip vertically
                          ty = texH - 1 - ty;
                          
                          int idx = (ty * texW + tx) * 3;
@@ -251,7 +269,7 @@ void drawProjectiles() {
                          int g = projTexture[idx+1];
                          int b = projTexture[idx+2];
                          
-                         // Transparency check (1,0,0 based on file content)
+                         // Transparency check (1,0,0)
                          if (r == 1 && g == 0 && b == 0) continue;
                          
                          pixel(x, y, r, g, b);

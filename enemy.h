@@ -10,6 +10,10 @@
 #include "textures/BOSSA1_DIE.h"
 #include "textures/BOSSA2_DIE.h"
 #include "textures/BOSSA3_DIE.h"
+#include "textures/cace_stat.h"
+#include "textures/cace_attack.h"
+#include "textures/cace_die.h"
+#include "textures/cace_fire.h"
 #include "projectile.h"
 
 
@@ -31,7 +35,13 @@
 #define ENEMY_TYPE_BOSSA1 0
 #define ENEMY_TYPE_BOSSA2 1
 #define ENEMY_TYPE_BOSSA3 2
-#define NUM_ENEMY_TYPES 3
+#define ENEMY_TYPE_CACE   3
+#define NUM_ENEMY_TYPES 4
+
+// Cacodemon specific constants
+#define CACE_FLOAT_SPEED 0.005f
+#define CACE_FLOAT_AMPLITUDE 15
+#define CACE_BASE_Z 0
 
 // Enemy states
 #define ENEMY_STATE_IDLE 0
@@ -45,11 +55,13 @@
 #define BOSSA1_HEALTH 100
 #define BOSSA2_HEALTH 150
 #define BOSSA3_HEALTH 200
+#define CACE_HEALTH   120
 
 // Enemy damage by type
 #define BOSSA1_DAMAGE 10
 #define BOSSA2_DAMAGE 15
 #define BOSSA3_DAMAGE 20
+#define CACE_DAMAGE   12
 
 // Player health system
 int playerHealth = 100;
@@ -76,6 +88,8 @@ typedef struct {
 	int lastAttackTime; // Last time enemy attacked
 	int stateStartTime; // When current state started
 	int damage;         // Damage dealt by this enemy
+	float trueZ;        // Precise Z position for smooth movement
+	float driftPhase;   // Random phase for organic floating
 } Enemy;
 
 // Global enemy array
@@ -92,6 +106,7 @@ int getEnemyHealthByType(int enemyType) {
 		case ENEMY_TYPE_BOSSA1: return BOSSA1_HEALTH;
 		case ENEMY_TYPE_BOSSA2: return BOSSA2_HEALTH;
 		case ENEMY_TYPE_BOSSA3: return BOSSA3_HEALTH;
+		case ENEMY_TYPE_CACE:   return CACE_HEALTH;
 		default: return BOSSA1_HEALTH;
 	}
 }
@@ -102,6 +117,7 @@ int getEnemyDamageByType(int enemyType) {
 		case ENEMY_TYPE_BOSSA1: return BOSSA1_DAMAGE;
 		case ENEMY_TYPE_BOSSA2: return BOSSA2_DAMAGE;
 		case ENEMY_TYPE_BOSSA3: return BOSSA3_DAMAGE;
+		case ENEMY_TYPE_CACE:   return CACE_DAMAGE;
 		default: return BOSSA1_DAMAGE;
 	}
 }
@@ -140,6 +156,8 @@ void addEnemyType(int x, int y, int z, int enemyType) {
 	enemies[numEnemies].x = x;
 	enemies[numEnemies].y = y;
 	enemies[numEnemies].z = z;
+	enemies[numEnemies].trueZ = (float)z;
+	enemies[numEnemies].driftPhase = (float)(rand() % 100) * 0.1f;
 	enemies[numEnemies].active = 1;
 	enemies[numEnemies].state = ENEMY_STATE_IDLE;
 	enemies[numEnemies].targetAngle = 0.0f;
@@ -173,6 +191,7 @@ int getEnemyFrameCount(int enemyType) {
 		case ENEMY_TYPE_BOSSA1: return BOSSA1_FRAME_COUNT;
 		case ENEMY_TYPE_BOSSA2: return BOSSA2_FRAME_COUNT;
 		case ENEMY_TYPE_BOSSA3: return BOSSA3_FRAME_COUNT;
+		case ENEMY_TYPE_CACE:   return 1; // Idle is single frame
 		default: return BOSSA1_FRAME_COUNT;
 	}
 }
@@ -279,6 +298,20 @@ void updateEnemies(int playerX, int playerY, int playerZ, int currentTime) {
 	int i;
 	for (i = 0; i < numEnemies; i++) {
 		if (!enemies[i].active) continue;
+
+		// Handle Cacodemon Organic Floating
+		if (enemies[i].enemyType == ENEMY_TYPE_CACE && enemies[i].state != ENEMY_STATE_DYING && enemies[i].state != ENEMY_STATE_DEAD) {
+			float targetZ = (float)playerZ;
+			// Smoothly move towards targetZ
+			float diff = targetZ - enemies[i].trueZ;
+			enemies[i].trueZ += diff * 0.02f;
+			
+			// Add Organic Drift
+			float timeVal = currentTime * 0.002f + enemies[i].driftPhase;
+			float organicOffset = sin(timeVal) * 12.0f + sin(timeVal * 2.3f) * 6.0f;
+			
+			enemies[i].z = (int)(enemies[i].trueZ + organicOffset + 20); 
+		}
 		
 		// Handle death state
 		if (enemies[i].state == ENEMY_STATE_DYING) {
@@ -372,8 +405,10 @@ void updateEnemies(int playerX, int playerY, int playerZ, int currentTime) {
 				enemies[i].y += (int)(cos(angle) * ENEMY_SPEED);
 			}
 			
-			// Keep enemy at same height as player (same plane)
-			enemies[i].z = playerZ;
+			// Keep enemy at same height as player (same plane) - EXCEPT Cacodemon
+			if (enemies[i].enemyType != ENEMY_TYPE_CACE) {
+				enemies[i].z = playerZ;
+			}
 			
 			// Update animation frame when moving (only if we have more than 1 frame)
 			int frameCount = getEnemyFrameCount(enemies[i].enemyType);
