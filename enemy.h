@@ -14,7 +14,9 @@
 #include "textures/cace_attack.h"
 #include "textures/cace_die.h"
 #include "textures/cace_fire.h"
-#include "projectile.h"
+
+// Forward declaration to avoid implicit declaration error
+void spawnProjectile(float x, float y, float z, float angle, int type, int currentTime);
 
 
 

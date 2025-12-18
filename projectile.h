@@ -6,12 +6,11 @@
 #include <stdlib.h>
 #include "data_types.h"
 #include "textures/cace_fire.h"
+#include "textures/plasma_proj.h"
+#include "enemy.h"
 
-// Types
-#define PROJ_TYPE_PLASMA 0
-#define PROJ_TYPE_BULLET 1
-#define PROJ_TYPE_SHELL 2
-#define PROJ_TYPE_FIREBALL 3
+// Types handled in data_types.h
+// Constants
 
 // Constants
 #define MAX_PROJECTILES 64
@@ -25,7 +24,7 @@
 #define SHELL_DAMAGE 2 
 #define FIREBALL_DAMAGE 12
 
-#define PROJ_RADIUS 4
+
 
 // Struct
 typedef struct {
@@ -53,28 +52,35 @@ extern void damagePlayer(int damage, int currentTime);
 extern void pixel(int x, int y, int r, int g, int b);
 extern DoomTime T; // Access global time struct
 
-// Helper function: Distance from point to line segment
-static float proj_pointToLineDistance(int px, int py, int x1, int y1, int x2, int y2) {
-    int dx = x2 - x1;
-    int dy = y2 - y1;
+// Helper function: check collision with line segment using squared distance
+static int proj_checkWallCollision(float px, float py, int x1, int y1, int x2, int y2, float radius) {
+    float dx = (float)(x2 - x1);
+    float dy = (float)(y2 - y1);
+    
+    float pdx = px - x1;
+    float pdy = py - y1;
     
     if (dx == 0 && dy == 0) {
-        int ddx = px - x1;
-        int ddy = py - y1;
-        return sqrt((float)(ddx * ddx + ddy * ddy));
+        return (pdx * pdx + pdy * pdy) < (radius * radius);
     }
     
-    float t = ((px - x1) * dx + (py - y1) * dy) / (float)(dx * dx + dy * dy);
+    // Project point onto line (parameter t)
+    // t = Dot(P-A, B-A) / |B-A|^2
+    float lenSq = dx * dx + dy * dy;
+    float t = (pdx * dx + pdy * dy) / lenSq;
     
+    // Clamp t to segment [0, 1]
     if (t < 0.0f) t = 0.0f;
-    if (t > 1.0f) t = 1.0f;
+    else if (t > 1.0f) t = 1.0f;
     
+    // Closest point
     float closestX = x1 + t * dx;
     float closestY = y1 + t * dy;
     
-    float distX = px - closestX;
-    float distY = py - closestY;
-    return sqrt(distX * distX + distY * distY);
+    float distSqX = px - closestX;
+    float distSqY = py - closestY;
+    
+    return (distSqX * distSqX + distSqY * distSqY) < (radius * radius);
 }
 
 void initProjectiles() {
@@ -97,6 +103,8 @@ void spawnProjectile(float x, float y, float z, float angle, int type, int curre
     projectiles[slot].z = z;
     projectiles[slot].type = type;
     projectiles[slot].spawnTime = currentTime;
+    
+    // printf("DEBUG: Spawning Projectile Type %d at %.2f, %.2f, %.2f (Slot %d)\n", type, x, y, z, slot);
     projectiles[slot].lifeTime = 3000; // 3 seconds default
 
     float speed = 0;
@@ -146,10 +154,12 @@ void updateProjectiles(int currentTime) {
 
         // Wall Collision
         int collided = 0;
+        float radius = (float)PROJ_RADIUS;
+        
         for (int s = 0; s < numSect; s++) {
+            // Bounds check optimization could go here if sectors had bounds
             for (int w = S[s].ws; w < S[s].we; w++) {
-                float dist = proj_pointToLineDistance((int)newX, (int)newY, W[w].x1, W[w].y1, W[w].x2, W[w].y2);
-                if (dist < PROJ_RADIUS) {
+                if (proj_checkWallCollision(newX, newY, W[w].x1, W[w].y1, W[w].x2, W[w].y2, radius)) {
                     collided = 1;
                     break;
                 }
@@ -178,6 +188,28 @@ void updateProjectiles(int currentTime) {
         projectiles[i].x = newX;
         projectiles[i].y = newY;
         projectiles[i].z = newZ;
+        
+        // Enemy Collision (Simple distance check)
+        // Assume player projectiles hurt enemies
+        if (projectiles[i].type != PROJ_TYPE_FIREBALL) { // Fireballs are enemy attacks (usually)
+             extern int numEnemies;
+             extern Enemy enemies[];
+             extern void damageEnemy(int, int, int);
+             
+             for (int e = 0; e < numEnemies; e++) {
+                 if (!enemies[e].active || enemies[e].state == 4) continue; // 4 = Dead? Need ENEMY_STATE_DEAD constant or check state
+                 
+                 float ex = enemies[e].x - newX;
+                 float ey = enemies[e].y - newY;
+                 // Enemy radius approx 20
+                 if (ex*ex + ey*ey < 20*20) {
+                     damageEnemy(e, projectiles[i].damage, currentTime);
+                     projectiles[i].active = 0;
+                     break; 
+                 }
+             }
+             if (!projectiles[i].active) continue;
+        }
     }
 }
 
@@ -225,9 +257,10 @@ void drawProjectiles() {
         int texW = 0, texH = 0;
         
         if (projectiles[i].type == PROJ_TYPE_PLASMA) { // BOSSA1
-            projTexture = BOSSA1_PROJ;
-            texW = BOSSA1_PROJ_WIDTH;
-            texH = BOSSA1_PROJ_HEIGHT;
+            projTexture = PLASMA_PROJ;
+            texW = PLASMA_PROJ_WIDTH;
+            texH = PLASMA_PROJ_HEIGHT;
+            // printf("DEBUG: Drawing Plasma at Screen %d, %d (Size %d)\n", screenX, screenY, size);
         }
         else if (projectiles[i].type == PROJ_TYPE_FIREBALL) {
             // Animated Fireball
@@ -240,7 +273,7 @@ void drawProjectiles() {
         }
 
         int pr, pg, pb;
-        if (projectiles[i].type == PROJ_TYPE_PLASMA) { pr=0; pg=255; pb=0; }
+        if (projectiles[i].type == PROJ_TYPE_PLASMA) { pr=0; pg=255; pb=255; } // Cyan fallback
         else if (projectiles[i].type == PROJ_TYPE_BULLET) { pr=255; pg=255; pb=0; }
         else if (projectiles[i].type == PROJ_TYPE_FIREBALL) { pr=255; pg=0; pb=0; }
         else { pr=255; pg=100; pb=0; } // Shell

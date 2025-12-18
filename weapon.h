@@ -11,31 +11,39 @@
 #include "textures/shotgun_stat.h"
 #include "textures/shotgun_flash.h"
 #include "textures/shotgun_reload.h"
+#include "textures/shotgun_reload.h"
 #include "textures/hands_stat.h"
 #include "textures/hand_punch.h"
+#include "textures/plasma_stat.h"
+#include "textures/plasma_fire.h"
+#include "textures/plasma_reload.h"
 
 // Weapon types
 #define WEAPON_FIST 0
 #define WEAPON_PISTOL 1
 #define WEAPON_SHOTGUN 2
 #define WEAPON_CHAINGUN 3
-#define NUM_WEAPONS 4
+#define WEAPON_PLASMA 4
+#define NUM_WEAPONS 5
 
 // Weapon properties
 #define PISTOL_DAMAGE 15
 #define SHOTGUN_DAMAGE 60   // Total damage (pellets)
 #define CHAINGUN_DAMAGE 10
 #define FIST_DAMAGE 10
+#define PLASMA_DAMAGE 20
 
 #define PISTOL_COOLDOWN 500     // ms between shots (0.5 second delay)
 #define SHOTGUN_COOLDOWN 1200
 #define CHAINGUN_COOLDOWN 80
 #define FIST_COOLDOWN 400
+#define PLASMA_COOLDOWN 100 // Fast fire rate
 
 #define PISTOL_RANGE 800
 #define SHOTGUN_RANGE 400
 #define CHAINGUN_RANGE 600
 #define FIST_RANGE 50
+#define PLASMA_RANGE 1000
 
 // Shooting animation timing
 #define PISTOL_SHOOT_ANIM_DURATION 200  // Total animation duration in ms
@@ -89,6 +97,10 @@ void initWeapons(void) {
     weapon.ammo[WEAPON_CHAINGUN] = 0;
     weapon.maxAmmo[WEAPON_CHAINGUN] = 400;
     
+    // Plasma Gun
+    weapon.ammo[WEAPON_PLASMA] = 100;
+    weapon.maxAmmo[WEAPON_PLASMA] = 400;
+    
     weapon.lastFireTime = 0;
     weapon.isFiring = 0;
     weapon.weaponBobPhase = 0;
@@ -106,6 +118,7 @@ int getWeaponCooldown(int weaponType) {
         case WEAPON_PISTOL: return PISTOL_COOLDOWN;
         case WEAPON_SHOTGUN: return SHOTGUN_COOLDOWN;
         case WEAPON_CHAINGUN: return CHAINGUN_COOLDOWN;
+        case WEAPON_PLASMA: return PLASMA_COOLDOWN;
         default: return PISTOL_COOLDOWN;
     }
 }
@@ -117,6 +130,7 @@ int getWeaponDamage(int weaponType) {
         case WEAPON_PISTOL: return PISTOL_DAMAGE;
         case WEAPON_SHOTGUN: return SHOTGUN_DAMAGE;
         case WEAPON_CHAINGUN: return CHAINGUN_DAMAGE;
+        case WEAPON_PLASMA: return PLASMA_DAMAGE;
         default: return PISTOL_DAMAGE;
     }
 }
@@ -128,6 +142,7 @@ int getWeaponRange(int weaponType) {
         case WEAPON_PISTOL: return PISTOL_RANGE;
         case WEAPON_SHOTGUN: return SHOTGUN_RANGE;
         case WEAPON_CHAINGUN: return CHAINGUN_RANGE;
+        case WEAPON_PLASMA: return PLASMA_RANGE;
         default: return PISTOL_RANGE;
     }
 }
@@ -139,6 +154,7 @@ const char* getWeaponName(int weaponType) {
         case WEAPON_PISTOL: return "PISTOL";
         case WEAPON_SHOTGUN: return "SHOTGUN";
         case WEAPON_CHAINGUN: return "CHAINGUN";
+        case WEAPON_PLASMA: return "PLASMA";
         default: return "UNKNOWN";
     }
 }
@@ -191,6 +207,21 @@ int fireWeapon(int enemyIndex, int currentTime) {
         case WEAPON_CHAINGUN:
             kickbackStrength = 2;  // Light but rapid fire
             break;
+        case WEAPON_PLASMA:
+            kickbackStrength = 1;  // Minimal kickback
+            // Spawn Plasma Projectile
+            // Spawn Plasma Projectile
+            // Convert angle (0-359) to radians for standard sin/cos functions
+            float radAngle = P.a * 3.14159f / 180.0f;
+            
+            // Offset spawn position to avoid self-collision (Player radius ~8, Proj radius 4)
+            // Spawn 20 units in front
+            float spawnX = P.x + sin(radAngle) * 20.0f;
+            float spawnY = P.y + cos(radAngle) * 20.0f;
+            
+            spawnProjectile(spawnX, spawnY, (float)P.z, radAngle, PROJ_TYPE_PLASMA, currentTime);
+            return 1; // Return 1 to indicate fired (and skip hitscan damage below)
+            break;
     }
     
     // Apply kickback in the direction opposite to player's facing
@@ -203,8 +234,8 @@ int fireWeapon(int enemyIndex, int currentTime) {
         P.y += (int)backwardY;
     }
     
-    // Apply damage to enemy if one is targeted
-    if (enemyIndex >= 0) {
+    // Apply damage to enemy if one is targeted (Hitscan weapons only)
+    if (weapon.currentWeapon != WEAPON_PLASMA && enemyIndex >= 0) {
         int damage = getWeaponDamage(weapon.currentWeapon);
         
         // Shotgun has spread - random damage reduction at distance
@@ -218,6 +249,8 @@ int fireWeapon(int enemyIndex, int currentTime) {
         
         return 1;
     }
+    
+    if (weapon.currentWeapon == WEAPON_PLASMA) return 1; // Already handled
     
     return 1;  // Fired but missed
 }
@@ -532,11 +565,8 @@ void drawWeaponSprite(void (*pixelFunc)(int, int, int, int, int),
         return; // Done drawing fist
     }
     
-    // Currently only pistol and shotgun sprites are available
-    if (weapon.currentWeapon != WEAPON_PISTOL && weapon.currentWeapon != WEAPON_SHOTGUN) {
-        // Draw placeholder for other weapons (just return for now)
-        return;
-    }
+    // Check for other weapons or allow fall-through to default behavior (Pistol logic below)
+
     
     // Shotgun Drawing Logic
     if (weapon.currentWeapon == WEAPON_SHOTGUN) {
@@ -662,6 +692,79 @@ void drawWeaponSprite(void (*pixelFunc)(int, int, int, int, int),
             }
         }
         return; // Done drawing shotgun
+    }
+
+    // Plasma Gun Drawing Logic
+    if (weapon.currentWeapon == WEAPON_PLASMA) {
+        int timeSinceFire = currentTime - weapon.lastFireTime;
+        const unsigned char* spriteData = PLASMA_STAT; // Default idle
+        int spriteWidth = PLASMA_STAT_WIDTH;
+        int spriteHeight = PLASMA_STAT_HEIGHT;
+        
+        // Logic:
+        // If firing (button held): Use continuous firing animation (Frame 1)
+        // If button released: check if we should be reloading (brief delay)
+        
+        // Debug
+        // printf("DEBUG: Weapon State: Fire=%d, TimeSince=%d\n", weapon.isFiring, timeSinceFire);
+        
+        if (weapon.isFiring) {
+            // Firing state - lock to Frame 1 as requested ("stays on second frame")
+            // Ensure array bounds
+            if (PLASMA_FIRE_FRAME_COUNT > 1) {
+                spriteData = PLASMA_FIRE_frames[1];
+                spriteWidth = PLASMA_FIRE_frame_widths[1];
+                spriteHeight = PLASMA_FIRE_frame_heights[1];
+            } else {
+                 spriteData = PLASMA_FIRE_frames[0];
+                 spriteWidth = PLASMA_FIRE_frame_widths[0];
+                 spriteHeight = PLASMA_FIRE_frame_heights[0];
+            }
+        } 
+        else if (currentTime - weapon.lastFireTime < 1000) {
+            // Reload state (1 second duration after release)
+            // Use the single static reload frame
+            spriteData = PLASMA_RELOAD;
+            // Use macros if arrays not available
+            spriteWidth = PLASMA_RELOAD_WIDTH;
+            spriteHeight = PLASMA_RELOAD_HEIGHT;
+        } else {
+            // Idle
+            spriteData = PLASMA_STAT;
+            spriteWidth = PLASMA_STAT_WIDTH;
+            spriteHeight = PLASMA_STAT_HEIGHT;
+        }
+
+        // Draw Plasma Gun (Center)
+        int startX = (screenWidth - spriteWidth) / 2;
+        // User requested moving textures down. 
+        // 0 was default. +20 moved UP. So -20 should move DOWN.
+        int startY = -20; 
+        
+        startY -= (int)weapon.weaponOffsetY;
+        
+        // Bobbing
+        if (weapon.weaponBobPhase > 0 && !weapon.isFiring) {
+             startX += (int)(sin(weapon.weaponBobPhase * 3.14159f / 180.0f) * 4.0f);
+             startY += (int)(sin(weapon.weaponBobPhase * 2.0f * 3.14159f / 180.0f) * 3.0f);
+        }
+
+        for (int y = 0; y < spriteHeight; y++) {
+            for (int x = 0; x < spriteWidth; x++) {
+                int srcY = spriteHeight - 1 - y;
+                if (srcY < 0 || srcY >= spriteHeight) continue;
+                
+                int pixelIndex = (srcY * spriteWidth + x) * 3;
+                int r = spriteData[pixelIndex + 0];
+                int g = spriteData[pixelIndex + 1];
+                int b = spriteData[pixelIndex + 2];
+                
+                if (r == 1 && g == 0 && b == 0) continue;
+                
+                pixelFunc(startX + x, startY + y, r, g, b);
+            }
+        }
+        return;
     }
     
     // Determine which sprite to use (idle or shooting animation)

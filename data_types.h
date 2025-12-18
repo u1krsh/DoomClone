@@ -59,4 +59,12 @@ typedef struct {
 	const unsigned char* name;           //texture name
 } TextureMaps;
 
+// Projectile Types (moved here to avoid circular dependencies)
+#define PROJ_TYPE_PLASMA 0
+#define PROJ_TYPE_BULLET 1
+#define PROJ_TYPE_SHELL 2
+#define PROJ_TYPE_FIREBALL 3
+
+#define PROJ_RADIUS 4
+
 #endif // DATA_TYPES_H

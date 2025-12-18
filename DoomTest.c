@@ -28,21 +28,23 @@
 // Enemy system
 #include "enemy.h"
 
+// Sound system
+#include "sound.h"
+
+// Types
+#include "projectile.h"
+
 // HUD system
 #include "hud.h"
 
-// Weapon system
+// Weapon system (MUST be before pickups.h)
 #include "weapon.h"
 
-// Effects system (screen shake, particles, kill streaks)
+// Effects system
 #include "effects.h"
 
-// Pickup system (health, armor, powerups)
+// Pickup system
 #include "pickups.h"
-
-// Sound system
-#include "sound.h"
-#include "projectile.h"
 
 // Global pause state
 int gamePaused = 0;
@@ -1337,8 +1339,11 @@ void display() {
 					// Update projectiles
 					updateProjectiles(T.fr1);
 					
-					// Handle weapon firing - only fire once per click (not auto-fire)
-					if (K.fire && !K.firePressed) {
+					// Handle weapon firing
+					// Auto-fire for Chaingun and Plasma
+					int isAutoFire = (weapon.currentWeapon == WEAPON_CHAINGUN || weapon.currentWeapon == WEAPON_PLASMA);
+					
+					if (K.fire && (!K.firePressed || isAutoFire)) {
 						int targetEnemy = getEnemyInCrosshair(P.x, P.y, P.a, M.cos, M.sin);
 						
 						// Check range - if too far, treat as miss (pass -1)
@@ -1371,6 +1376,7 @@ void display() {
 					
 					// Update weapon state
 					int isMoving = (K.w || K.s || K.sl || K.sr);
+                    weapon.isFiring = K.fire; // Sync firing state for animations
 					updateWeapon(isMoving, T.fr1);
 				}
 				
@@ -1548,7 +1554,8 @@ void KeysDown(unsigned char key, int x, int y)
 	if (key == '1') { selectWeapon(WEAPON_FIST); }
 	if (key == '2') { selectWeapon(WEAPON_PISTOL); }
 	if (key == '3') { selectWeapon(WEAPON_SHOTGUN); }
-	if (key == '4') { selectWeapon(WEAPON_CHAINGUN); }
+	if (key == '4') { selectWeapon(WEAPON_PLASMA); }
+	if (key == '5') { selectWeapon(WEAPON_CHAINGUN); }
 	
 	// Weapon switching with Q/E
 	if (key == 'q') { prevWeapon(); }
