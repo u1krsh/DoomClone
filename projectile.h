@@ -35,6 +35,7 @@ typedef struct {
     int damage;
     int lifeTime; // ms
     int spawnTime;
+    int isPlayerProjectile; // 1 if fired by player, 0 if fired by enemy
 } Projectile;
 
 Projectile projectiles[MAX_PROJECTILES];
@@ -103,6 +104,7 @@ void spawnProjectile(float x, float y, float z, float angle, int type, int curre
     projectiles[slot].z = z;
     projectiles[slot].type = type;
     projectiles[slot].spawnTime = currentTime;
+    projectiles[slot].isPlayerProjectile = 0; // Default to enemy projectile
     
     // printf("DEBUG: Spawning Projectile Type %d at %.2f, %.2f, %.2f (Slot %d)\n", type, x, y, z, slot);
     projectiles[slot].lifeTime = 3000; // 3 seconds default
@@ -190,8 +192,8 @@ void updateProjectiles(int currentTime) {
         projectiles[i].z = newZ;
         
         // Enemy Collision (Simple distance check)
-        // Assume player projectiles hurt enemies
-        if (projectiles[i].type != PROJ_TYPE_FIREBALL) { // Fireballs are enemy attacks (usually)
+        // Only player projectiles hurt enemies
+        if (projectiles[i].isPlayerProjectile) {
              extern int numEnemies;
              extern Enemy enemies[];
              extern void damageEnemy(int, int, int);

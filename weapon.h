@@ -220,6 +220,16 @@ int fireWeapon(int enemyIndex, int currentTime) {
             float spawnY = P.y + cos(radAngle) * 20.0f;
             
             spawnProjectile(spawnX, spawnY, (float)P.z, radAngle, PROJ_TYPE_PLASMA, currentTime);
+            // Mark as player projectile so it can hit enemies
+            extern Projectile projectiles[];
+            for (int pi = 0; pi < MAX_PROJECTILES; pi++) {
+                // Find the projectile we just spawned (active, at our position, spawned now)
+                if (projectiles[pi].active && projectiles[pi].spawnTime == currentTime &&
+                    (int)projectiles[pi].x == (int)spawnX && (int)projectiles[pi].y == (int)spawnY) {
+                    projectiles[pi].isPlayerProjectile = 1;
+                    break;
+                }
+            }
             return 1; // Return 1 to indicate fired (and skip hitscan damage below)
             break;
     }

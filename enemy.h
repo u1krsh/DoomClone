@@ -384,6 +384,7 @@ void updateEnemies(int playerX, int playerY, int playerZ, int currentTime) {
 				int projType = PROJ_TYPE_PLASMA;
 				if (enemies[i].enemyType == ENEMY_TYPE_BOSSA2) projType = PROJ_TYPE_BULLET;
 				else if (enemies[i].enemyType == ENEMY_TYPE_BOSSA3) projType = PROJ_TYPE_SHELL;
+				else if (enemies[i].enemyType == ENEMY_TYPE_CACE) projType = PROJ_TYPE_FIREBALL;
 				
 				spawnProjectile((float)enemies[i].x, (float)enemies[i].y, (float)enemies[i].z + 15, angle, projType, currentTime);
 
