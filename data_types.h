@@ -48,7 +48,8 @@ typedef struct {
 	int x, y; // center of sector
 	int d; // sorting drawing order
 	int c1, c2; //bottom and top color
-	int surf[SW]; // to hold points for surface
+	int surf[SW]; // to hold points for floor surface
+	int surf2[SW]; // to hold points for ceiling surface
 	int surface; //is there a surface to draw
 	int ss, st; //surface texture, surface scale
 	int tag; // sector tag (0=Normal, 1=Stair)

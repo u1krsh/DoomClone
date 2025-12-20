@@ -352,10 +352,8 @@ int findNeighborSector(int wallIndex) {
 // Check if moving collides with any wall
 // Simple collision: solid walls block, stair portals (tag=1) always passable
 int checkWallCollision(int newX, int newY) {
-	int currentSector = getSector(P.x, P.y);
-	int destSector = getSector(newX, newY);
-	
 	// Check all walls
+
 	for (int s = 0; s < numSect; s++) {
 		for (int w = S[s].ws; w < S[s].we; w++) {
 			float distance = pointToLineDistance(newX, newY, W[w].x1, W[w].y1, W[w].x2, W[w].y2);
@@ -393,13 +391,24 @@ void clearBackground() {
 	}
 }
 
+#define CLIP_Z 5
+
 void clipBehindPlayer(int* x1, int* y1, int* z1, int x2, int y2, int z2, float* u1, float u2) {
 	float da = *y1;
 	float db = y2;
-	float d = da - db; if (da == 0) { d = 1; }
-	float s = da / (da - db);// intesection factor 
+	float d = da - db; 
+	// Intersect with line y = CLIP_Z
+	// da + s * (db - da) = CLIP_Z
+	// s * (db - da) = CLIP_Z - da
+	// s = (CLIP_Z - da) / (db - da) = (da - CLIP_Z) / (da - db)
+	
+	float s = (da - CLIP_Z) / (da - db); 
+	
 	*x1 = *x1 + s * (x2 - (*x1));
-	*y1 = *y1 + s * (y2 - (*y1)); if (*y1 == 0) { *y1 = 1; }// prevents divide by 0
+	*y1 = *y1 + s * (y2 - (*y1)); // This should result in exactly CLIP_Z
+	// Clamp just in case of float precision issues
+	if (*y1 < CLIP_Z) *y1 = CLIP_Z;
+	
 	*z1 = *z1 + s * (z2 - (*z1));
     if (u1 != NULL) {
         *u1 = *u1 + s * (u2 - (*u1));
@@ -413,7 +422,7 @@ int dist(int x1, int y1, int x2, int y2) {
 }
 
 // Updated drawWall with perspective correct texture mapping and texture clipping
-void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int frontBack, float d1, float d2, float s0, float s1) {
+void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int loop, float d1, float d2, float s0, float s1) {
 	int wt = W[w].wt;
 
 	int x, y;
@@ -529,18 +538,134 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 		if (y2 > SH) { y2 = SH; }
 
 		//draw front wall
-		if (frontBack == 0) {
-			if (S[s].surface == 1) { S[s].surf[x] = y1; } //bottom surface save top row
-			if (S[s].surface == 2) { S[s].surf[x] = y2; }
-
-			int wall_height = y2_orig - y1_orig;
-			if (wall_height <= 0) continue;
-
+		// 3DSage Algorithm: 
+		// Loop 0 with positive surface (1,2): Save Y-positions, skip wall drawing
+		// Loop 1 with negative surface (-1,-2): Draw surfaces using saved Y, then draw wall
+		// Surface 3 (interior): Draw directly in loop 1 without save/draw pattern
+		if (loop == 0) {
+			// Pass 0: Save Y-positions for surface rendering (only for exterior surfaces 1,2)
+			if (S[s].surface == 1) { S[s].surf[x] = y1; continue; } // Save floor boundary
+			if (S[s].surface == 2) { S[s].surf[x] = y2; continue; } // Save ceiling boundary
+			// For surface 3 (interior), don't save - we'll draw directly in loop 1
+		}
+		
+		// Calculate view variables for surface rendering
+		int horizonY = HSH - P.l;
+		int angle = P.a;
+		if (angle < 0) angle = 0; if (angle > 359) angle = 359;
+		float cosA = M.cos[angle];
+		float sinA = M.sin[angle];
+		
+		// Pass 1: Draw surfaces from saved Y-position to wall Y-position
+		if (S[s].surface == -1) { 
+			// Player is BELOW the sector - draw floor from saved Y to y1
+			for (y = S[s].surf[x]; y < y1; y++) {
+				int screenYFromHorizon = y - horizonY;
+				if (screenYFromHorizon == 0) continue;
+				int heightDiff = S[s].z1 - P.z; 
+				float dist = (float)(heightDiff * 200) / (float)screenYFromHorizon;
+				if (dist < 0) dist = -dist;
+				if (dist < 1) dist = 1; if (dist > 2000) dist = 2000;
+				
+				float screenXFromCenter = (float)(x - HSW);
+				float worldDX = (screenXFromCenter * dist) / 200.0f;
+				int worldX = (int)(P.x + sinA * dist + cosA * worldDX);
+				int worldY = (int)(P.y + cosA * dist - sinA * worldDX);
+				
+				int texU = (worldX / 2) % FLOOR1_WIDTH; int texV = (worldY / 2) % FLOOR1_HEIGHT;
+				if (texU < 0) texU += FLOOR1_WIDTH; if (texV < 0) texV += FLOOR1_HEIGHT;
+				int pixelIdx = (texV * FLOOR1_WIDTH + texU) * 3;
+				int shade = (int)(dist / 8.0f); if (shade > 80) shade = 80;
+				int r = FLOOR1[pixelIdx] - shade; if (r < 0) r = 0;
+				int g = FLOOR1[pixelIdx+1] - shade; if (g < 0) g = 0;
+				int b = FLOOR1[pixelIdx+2] - shade; if (b < 0) b = 0;
+				pixel(x, y, r, g, b);
+			}
+		}
+		
+		if (S[s].surface == -2) { 
+			// Player is ABOVE the sector - draw ceiling from y2 to saved Y
+			for (y = y2; y < S[s].surf[x]; y++) {
+				int screenYFromHorizon = y - horizonY;
+				if (screenYFromHorizon == 0) continue;
+				int heightDiff = S[s].z2 - P.z; 
+				float dist = (float)(heightDiff * 200) / (float)screenYFromHorizon;
+				if (dist < 0) dist = -dist;
+				if (dist < 1) dist = 1; if (dist > 2000) dist = 2000;
+				
+				float screenXFromCenter = (float)(x - HSW);
+				float worldDX = (screenXFromCenter * dist) / 200.0f;
+				int worldX = (int)(P.x + sinA * dist + cosA * worldDX);
+				int worldY = (int)(P.y + cosA * dist - sinA * worldDX);
+				
+				int texU = (worldX / 2) % FLOOR1_WIDTH; int texV = (worldY / 2) % FLOOR1_HEIGHT;
+				if (texU < 0) texU += FLOOR1_WIDTH; if (texV < 0) texV += FLOOR1_HEIGHT;
+				int pixelIdx = (texV * FLOOR1_WIDTH + texU) * 3;
+				int shade = (int)(dist / 8.0f); if (shade > 80) shade = 80;
+				int r = FLOOR1[pixelIdx] - shade; if (r < 0) r = 0;
+				int g = FLOOR1[pixelIdx+1] - shade; if (g < 0) g = 0;
+				int b = FLOOR1[pixelIdx+2] - shade; if (b < 0) b = 0;
+				pixel(x, y, r, g, b);
+			}
+		}
+		
+		// Interior surface rendering (surface -3)
+		// Player is INSIDE the sector - draw both floor and ceiling
+		if (S[s].surface == -3) { 
+			// Draw FLOOR from saved Y to y1
+			for (y = S[s].surf[x]; y < y1; y++) {
+				int screenYFromHorizon = y - horizonY;
+				if (screenYFromHorizon == 0) continue;
+				int heightDiff = S[s].z1 - P.z; 
+				float dist = (float)(heightDiff * 200) / (float)screenYFromHorizon;
+				if (dist < 0) dist = -dist;
+				if (dist < 1) dist = 1; if (dist > 2000) dist = 2000;
+				
+				float screenXFromCenter = (float)(x - HSW);
+				float worldDX = (screenXFromCenter * dist) / 200.0f;
+				int worldX = (int)(P.x + sinA * dist + cosA * worldDX);
+				int worldY = (int)(P.y + cosA * dist - sinA * worldDX);
+				
+				int texU = (worldX / 2) % FLOOR1_WIDTH; int texV = (worldY / 2) % FLOOR1_HEIGHT;
+				if (texU < 0) texU += FLOOR1_WIDTH; if (texV < 0) texV += FLOOR1_HEIGHT;
+				int pixelIdx = (texV * FLOOR1_WIDTH + texU) * 3;
+				int shade = (int)(dist / 8.0f); if (shade > 80) shade = 80;
+				int r = FLOOR1[pixelIdx] - shade; if (r < 0) r = 0;
+				int g = FLOOR1[pixelIdx+1] - shade; if (g < 0) g = 0;
+				int b = FLOOR1[pixelIdx+2] - shade; if (b < 0) b = 0;
+				pixel(x, y, r, g, b);
+			}
+			
+			// Draw CEILING from y2 to saved Y
+			for (y = y2; y < S[s].surf2[x]; y++) {
+				int screenYFromHorizon = y - horizonY;
+				if (screenYFromHorizon == 0) continue;
+				int heightDiff = S[s].z2 - P.z;
+				float dist = (float)(heightDiff * 200) / (float)screenYFromHorizon;
+				if (dist < 0) dist = -dist;
+				if (dist < 1) dist = 1; if (dist > 2000) dist = 2000;
+				
+				float screenXFromCenter = (float)(x - HSW);
+				float worldDX = (screenXFromCenter * dist) / 200.0f;
+				int worldX = (int)(P.x + sinA * dist + cosA * worldDX);
+				int worldY = (int)(P.y + cosA * dist - sinA * worldDX);
+				
+				int texU = (worldX / 2) % FLOOR1_WIDTH; int texV = (worldY / 2) % FLOOR1_HEIGHT;
+				if (texU < 0) texU += FLOOR1_WIDTH; if (texV < 0) texV += FLOOR1_HEIGHT;
+				int pixelIdx = (texV * FLOOR1_WIDTH + texU) * 3;
+				int shade = (int)(dist / 8.0f); if (shade > 60) shade = 60;
+				int r = FLOOR1[pixelIdx] - shade - 10; if (r < 0) r = 0;
+				int g = FLOOR1[pixelIdx+1] - shade - 5; if (g < 0) g = 0;
+				int b = FLOOR1[pixelIdx+2] - shade; if (b < 0) b = 0;
+				pixel(x, y, r, g, b);
+			}
+		}
+		
+		// Draw the textured wall
+		int wall_height = y2_orig - y1_orig;
+		if (wall_height > 0) {
 			for (y = y1; y < y2; y++) {
-				// Vertical perspective correction?
-                // Vertical is usually linear in screen space for walls (constant Z per vertical slice)
-                // So the original affine interpolation for y is actually correct for vertical mapping
-                // because for a vertical wall strip, depth is constant!
+				// Vertical perspective correction
 				float vt = ((float)(y - y1_orig) / (float)wall_height) * texHeight * W[w].v;
 				
 				if (vt < 0) vt = 0;
@@ -558,18 +683,12 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 				// Bounds check for pixel index
 				int maxPixel = texWidth * texHeight * 3;
 				if (pixelN >= 0 && pixelN + 2 < maxPixel) {
-					// Use dynamic shade instead of static W[w].shade
 					int r = texData[pixelN + 0] - dynamicShade; if (r < 0) { r = 0; }
 					int g = texData[pixelN + 1] - dynamicShade; if (g < 0) { g = 0; }
 					int b = texData[pixelN + 2] - dynamicShade; if (b < 0) { b = 0; }
 					pixel(x, y, r, g, b);
 				}
 			}
-		}
-		if (frontBack == 1) {
-			if (S[s].surface == 1) { y2 = S[s].surf[x]; } //bottom surface save top row
-			if (S[s].surface == 2) { y1 = S[s].surf[x]; }
-			for (y = y1; y < y2; y++) { pixel(x, y, 255, 0, 0); } //normal wall
 		}
 	}
 }
@@ -578,7 +697,7 @@ void draw3D() {
 	int wx[4], wy[4], wz[4];
 	float CS = M.cos[P.a];
 	float SN = M.sin[P.a];
-	int s, w, frontBack, cycles, x;
+	int s, w, x;
 	
 	// Initialize depth buffer
 	for (x = 0; x < SW; x++) {
@@ -695,19 +814,38 @@ void draw3D() {
 		}
 	}
 
+	// Initialize depth buffer
+	for (x = 0; x < SW; x++) {
+		depthBuffer[x] = 99999.0f; // Far distance
+	}
+	
 	//draw sectors
 	for (s = 0; s < numSect; s++) {
 		S[s].d = 0;
-		if (P.z < S[s].z1) { S[s].surface = 1; cycles = 2; for (x = 0; x < SW; x++) { S[s].surf[x] = SH; } }
-		else if (P.z > S[s].z2) { S[s].surface = 2; cycles = 2; for (x = 0; x < SW; x++) { S[s].surf[x] = 0; } }
-		else { S[s].surface = 0; cycles = 1; }
+		// surface: 1 = floor only (player below), 2 = ceiling only (player above), 3 = both (player inside)
+		// Using 3DSage two-pass algorithm: positive saves Y, negative draws surface
+		if (P.z < S[s].z1) { 
+			S[s].surface = 1;
+			for (x = 0; x < SW; x++) { S[s].surf[x] = SH; }  // Initialize floor clip to screen bottom
+		}
+		else if (P.z > S[s].z2) { 
+			S[s].surface = 2;
+			for (x = 0; x < SW; x++) { S[s].surf[x] = 0; }   // Initialize ceiling clip to screen top
+		}
+		else { 
+			// Player is INSIDE the sector - render both floor and ceiling
+			S[s].surface = 3;
+			for (x = 0; x < SW; x++) { S[s].surf[x] = SH; S[s].surf2[x] = 0; }  // Floor to bottom, ceiling to top
+		}
 
-		for (frontBack = 0; frontBack < cycles; frontBack++) {
+		// Two-pass loop: loop 0 = save Y positions (with swapped vertices), loop 1 = draw surfaces
+		for (int loop = 0; loop < 2; loop++) {
 			for (w = S[s].ws; w < S[s].we; w++) {
 				int x1 = W[w].x1 - P.x, y1 = W[w].y1 - P.y;
 				int x2 = W[w].x2 - P.x, y2 = W[w].y2 - P.y;
 
-				if (frontBack == 1) { int swp = x1; x1 = x2; x2 = swp; swp = y1; y1 = y2; y2 = swp; }
+				// Loop 0: swap vertices to render backface first (for surface saving)
+				if (loop == 0) { int swp = x1; x1 = x2; x2 = swp; swp = y1; y1 = y2; y2 = swp; }
 
 				wx[0] = x1 * CS - y1 * SN;
 				wx[1] = x2 * CS - y2 * SN;
@@ -731,16 +869,16 @@ void draw3D() {
                 // Texture coefficients (0.0 to 1.0)
                 float u0 = 0.0f; // Start U ratio
                 float u1 = 1.0f; // End U ratio
-                if (frontBack == 1) { // If backface swapped
+                if (loop == 0) { // If backface swapped (loop 0)
                     u0 = 1.0f; u1 = 0.0f;
                 }
 
-				if (wy[0] < 1) {
+				if (wy[0] < CLIP_Z) {
 					clipBehindPlayer(&wx[0], &wy[0], &wz[0], wx[1], wy[1], wz[1], &u0, u1);
 					clipBehindPlayer(&wx[2], &wy[2], &wz[2], wx[3], wy[3], wz[3], NULL, 0); // Don't need to update U again
 				}
 
-				if (wy[1] < 1) {
+				if (wy[1] < CLIP_Z) {
 					clipBehindPlayer(&wx[1], &wy[1], &wz[1], wx[0], wy[0], wz[0], &u1, u0);
 					clipBehindPlayer(&wx[3], &wy[3], &wz[3], wx[2], wy[2], wz[2], NULL, 0);
 				}
@@ -770,13 +908,15 @@ void draw3D() {
 				}
 
 
-				drawWall(wx[0], wx[1], wy[0], wy[1], wy[2], wy[3], s, w, frontBack, depth0, depth1, u0, u1);
+				drawWall(wx[0], wx[1], wy[0], wy[1], wy[2], wy[3], s, w, loop, depth0, depth1, u0, u1);
 			}
 			// Prevent division by zero for sectors with no walls
 			int wallCount = S[s].we - S[s].ws;
 			if (wallCount > 0) {
 				S[s].d /= wallCount;
 			}
+			// 3DSage algorithm: negate surface to switch from save mode to draw mode
+			S[s].surface *= -1;
 		}
 	}
 	
