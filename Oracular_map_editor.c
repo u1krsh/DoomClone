@@ -82,6 +82,31 @@ typedef struct
     const unsigned char* name;           //texture name
 }TexureMaps; TexureMaps Textures[64]; //increase for more textures
 
+// Light structure for dynamic lighting
+#define MAX_LIGHTS 64
+#define LIGHT_TYPE_POINT 0
+#define LIGHT_TYPE_SPOT 1
+#define FLICKER_NONE 0
+#define FLICKER_CANDLE 1
+#define FLICKER_STROBE 2
+#define FLICKER_PULSE 3
+#define FLICKER_RANDOM 4
+
+typedef struct {
+    int active;
+    int x, y, z;
+    int radius, intensity;
+    int r, g, b;
+    int type;              // LIGHT_TYPE_POINT or LIGHT_TYPE_SPOT
+    int spotAngle;
+    int spotDirX, spotDirY, spotDirZ;
+    int flickerType;
+    int flickerSpeed;
+} EditorLight;
+
+EditorLight lights[MAX_LIGHTS];
+int numLights = 0;
+
 typedef struct
 {
     int mx, my;        //rounded mouse position
@@ -92,13 +117,24 @@ typedef struct
     int scale;        //scale down grid
     int move[4];      //0=wall ID, 1=v1v2, 2=wallID, 3=v1v2
     int selS, selW;    //select sector/wall
+    // Editor mode: 0=Sector editing, 1=Light editing
+    int editorMode;
+    // Light editing
+    int addLight;      //0=off, 1=adding light
+    int selLight;      //selected light index (0=none, 1+=light index+1)
+    int lightR, lightG, lightB;  // Light color
+    int lightRadius;   // Light radius
+    int lightIntensity; // Light brightness
+    int lightType;     // Point or spot
+    int lightFlicker;  // Flicker pattern
+    int lightZ;        // Light height
 }grid; grid G;
 
 //------------------------------------------------------------------------------
 
 void save() //save file
 {
-    int w, s;
+    int w, s, l;
     FILE* fp = fopen("D:\\PROGRAM\\VSPRO\\DoomClone\\level.h", "w");
     if (fp == NULL) { printf("Error opening the file level.h"); return; }
     if (numSect == 0) { fclose(fp); return; } //nothing, clear file 
@@ -115,6 +151,27 @@ void save() //save file
         fprintf(fp, "%i %i %i %i %i %i %i %i\n", W[w].x1, W[w].y1, W[w].x2, W[w].y2, W[w].wt, W[w].u, W[w].v, W[w].shade);
     }
     fprintf(fp, "\n%i %i %i %i %i\n", P.x, P.y, P.z, P.a, P.l); //player position 
+    
+    // Save enemies placeholder (0 for now from editor)
+    fprintf(fp, "\n0\n");
+    
+    // Save pickups placeholder (0 for now from editor)
+    fprintf(fp, "\n0\n");
+    
+    // Save lights
+    fprintf(fp, "\n%i\n", numLights);
+    for (l = 0; l < numLights; l++) {
+        if (lights[l].active) {
+            fprintf(fp, "%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i\n",
+                lights[l].x, lights[l].y, lights[l].z,
+                lights[l].radius, lights[l].intensity,
+                lights[l].r, lights[l].g, lights[l].b,
+                lights[l].type, lights[l].spotAngle,
+                lights[l].spotDirX, lights[l].spotDirY, lights[l].spotDirZ,
+                lights[l].flickerType, lights[l].flickerSpeed);
+        }
+    }
+    
     fclose(fp);
 }
 
@@ -147,6 +204,55 @@ void load()
         fscanf(fp, "%i", &W[s].shade);
     }
     fscanf(fp, "%i %i %i %i %i", &P.x, &P.y, &P.z, &P.a, &P.l); //player position, angle, look direction 
+    
+    // Skip enemies count
+    int numEnemies = 0;
+    if (fscanf(fp, "%i", &numEnemies) != EOF) {
+        for (s = 0; s < numEnemies; s++) {
+            int dummy[4];
+            fscanf(fp, "%i %i %i %i", &dummy[0], &dummy[1], &dummy[2], &dummy[3]);
+        }
+    }
+    
+    // Skip pickups count
+    int numPickups = 0;
+    if (fscanf(fp, "%i", &numPickups) != EOF) {
+        for (s = 0; s < numPickups; s++) {
+            int dummy[5];
+            fscanf(fp, "%i %i %i %i %i", &dummy[0], &dummy[1], &dummy[2], &dummy[3], &dummy[4]);
+        }
+    }
+    
+    // Load lights
+    int num_loaded_lights = 0;
+    numLights = 0;
+    for (s = 0; s < MAX_LIGHTS; s++) { lights[s].active = 0; }
+    
+    if (fscanf(fp, "%i", &num_loaded_lights) != EOF) {
+        if (num_loaded_lights > MAX_LIGHTS) num_loaded_lights = MAX_LIGHTS;
+        numLights = num_loaded_lights;
+        
+        for (s = 0; s < numLights; s++) {
+            int type, flicker, flickerSpeed, spotAngle;
+            int dirX, dirY, dirZ;
+            if (fscanf(fp, "%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i",
+                &lights[s].x, &lights[s].y, &lights[s].z,
+                &lights[s].radius, &lights[s].intensity,
+                &lights[s].r, &lights[s].g, &lights[s].b,
+                &type, &spotAngle, &dirX, &dirY, &dirZ,
+                &flicker, &flickerSpeed) == 15) {
+                lights[s].active = 1;
+                lights[s].type = type;
+                lights[s].spotAngle = spotAngle;
+                lights[s].spotDirX = dirX;
+                lights[s].spotDirY = dirY;
+                lights[s].spotDirZ = dirZ;
+                lights[s].flickerType = flicker;
+                lights[s].flickerSpeed = flickerSpeed;
+            }
+        }
+    }
+    
     fclose(fp);
 }
 
@@ -157,6 +263,23 @@ void initGlobals() 	       //define grid globals
     G.z1 = 0;   G.z2 = 40;        //sector bottom top height
     G.st = 0;   G.ss = 4;         //sector texture, scale
     G.wt = 0;   G.wu = 1; G.wv = 1; //wall texture, u,v
+    
+    // Light defaults
+    G.addLight = 0;
+    G.selLight = 0;
+    G.editorMode = 0;  // 0=Sector mode, 1=Light mode
+    G.lightR = 255; G.lightG = 255; G.lightB = 200;  // Warm white
+    G.lightRadius = 150;
+    G.lightIntensity = 200;
+    G.lightType = LIGHT_TYPE_POINT;
+    G.lightFlicker = FLICKER_NONE;
+    G.lightZ = 30;
+    
+    // Init lights array
+    for (int i = 0; i < MAX_LIGHTS; i++) {
+        lights[i].active = 0;
+    }
+    numLights = 0;
 }
 
 void drawPixel(int x, int y, int r, int g, int b) //draw a pixel at x/y with rgb
@@ -438,6 +561,170 @@ void draw2D()
     drawNumber(146, 50, G.z1);   //bottom height
     drawNumber(146, 26, G.selS); //sector number
     drawNumber(146, 18, G.selW); //wall number
+    
+    // Draw lights on grid
+    for (int l = 0; l < numLights; l++) {
+        if (!lights[l].active) continue;
+        
+        int lx = lights[l].x / G.scale;
+        int ly = lights[l].y / G.scale;
+        int lr = lights[l].r;
+        int lg = lights[l].g;
+        int lb = lights[l].b;
+        
+        // Draw light as colored circle
+        int lightRad = 4; // pixels on screen
+        for (int angle = 0; angle < 360; angle += 30) {
+            int dx = (int)(lightRad * M.cos[angle]);
+            int dy = (int)(lightRad * M.sin[angle]);
+            drawPixel(lx + dx, ly + dy, lr, lg, lb);
+        }
+        
+        // Draw center dot
+        drawPixel(lx, ly, lr, lg, lb);
+        drawPixel(lx+1, ly, lr, lg, lb);
+        drawPixel(lx-1, ly, lr, lg, lb);
+        drawPixel(lx, ly+1, lr, lg, lb);
+        drawPixel(lx, ly-1, lr, lg, lb);
+        
+        // Highlight selected light
+        if (G.selLight == l + 1) {
+            for (int angle = 0; angle < 360; angle += 15) {
+                int dx = (int)((lightRad + 2) * M.cos[angle]);
+                int dy = (int)((lightRad + 2) * M.sin[angle]);
+                drawPixel(lx + dx, ly + dy, 255, 255, 255);
+            }
+        }
+    }
+    
+    // ============================================
+    // MODE TAB BUTTONS (at top of side panel)
+    // ============================================
+    // Draw tab buttons in panel area (x > 144)
+    int tabY = 117; // Just below the top edge
+    int tabWidth = 7;
+    int sectTabX = 145;
+    int lightTabX = 153;
+    
+    // Tab backgrounds
+    // SECT tab
+    for (int tx = sectTabX; tx < sectTabX + tabWidth; tx++) {
+        for (int ty = tabY - 4; ty < tabY; ty++) {
+            if (G.editorMode == 0) {
+                drawPixel(tx, ty, 100, 200, 100); // Green = active
+            } else {
+                drawPixel(tx, ty, 80, 80, 80); // Grey = inactive
+            }
+        }
+    }
+    // LIGHT tab
+    for (int tx = lightTabX; tx < lightTabX + tabWidth; tx++) {
+        for (int ty = tabY - 4; ty < tabY; ty++) {
+            if (G.editorMode == 1) {
+                drawPixel(tx, ty, 255, 200, 100); // Orange = active
+            } else {
+                drawPixel(tx, ty, 80, 80, 80); // Grey = inactive  
+            }
+        }
+    }
+    
+    // Draw "S" on Sect tab
+    drawPixel(sectTabX+2, tabY-3, 255, 255, 255);
+    drawPixel(sectTabX+3, tabY-3, 255, 255, 255);
+    drawPixel(sectTabX+4, tabY-3, 255, 255, 255);
+    drawPixel(sectTabX+2, tabY-2, 255, 255, 255);
+    drawPixel(sectTabX+3, tabY-2, 255, 255, 255);
+    drawPixel(sectTabX+4, tabY-2, 255, 255, 255);
+    drawPixel(sectTabX+2, tabY-1, 255, 255, 255);
+    drawPixel(sectTabX+3, tabY-1, 255, 255, 255);
+    drawPixel(sectTabX+4, tabY-1, 255, 255, 255);
+    
+    // Draw "L" on Light tab
+    drawPixel(lightTabX+2, tabY-3, 255, 255, 255);
+    drawPixel(lightTabX+2, tabY-2, 255, 255, 255);
+    drawPixel(lightTabX+2, tabY-1, 255, 255, 255);
+    drawPixel(lightTabX+3, tabY-1, 255, 255, 255);
+    drawPixel(lightTabX+4, tabY-1, 255, 255, 255);
+    
+    // ============================================
+    // LIGHT MODE PANEL (overlays sector controls when editorMode==1)
+    // ============================================
+    if (G.editorMode == 1) {
+        // Draw dark overlay on panel area to hide sector controls
+        for (int px = 145; px < 160; px++) {
+            for (int py = 0; py < tabY - 5; py++) {
+                drawPixel(px, py, 40, 40, 50);
+            }
+        }
+        
+        // Label: "LIGHT" at top
+        // Position for light editing controls
+        int panelX = 146;
+        int panelY = 105; // Start from top of panel area
+        
+        // ---------- Color Preview Box ----------
+        // Draw a small box showing current light color
+        for (int cx = panelX; cx < panelX + 12; cx++) {
+            for (int cy = panelY - 12; cy < panelY; cy++) {
+                drawPixel(cx, cy, G.lightR, G.lightG, G.lightB);
+            }
+        }
+        panelY -= 16;
+        
+        // ---------- R Slider ----------
+        for (int sx = panelX; sx < panelX + 12; sx++) {
+            int fill = (G.lightR * 12) / 255;
+            if (sx - panelX < fill) {
+                drawPixel(sx, panelY, 255, 50, 50);
+            } else {
+                drawPixel(sx, panelY, 60, 30, 30);
+            }
+        }
+        panelY -= 6;
+        
+        // ---------- G Slider ----------
+        for (int sx = panelX; sx < panelX + 12; sx++) {
+            int fill = (G.lightG * 12) / 255;
+            if (sx - panelX < fill) {
+                drawPixel(sx, panelY, 50, 255, 50);
+            } else {
+                drawPixel(sx, panelY, 30, 60, 30);
+            }
+        }
+        panelY -= 6;
+        
+        // ---------- B Slider ----------
+        for (int sx = panelX; sx < panelX + 12; sx++) {
+            int fill = (G.lightB * 12) / 255;
+            if (sx - panelX < fill) {
+                drawPixel(sx, panelY, 50, 50, 255);
+            } else {
+                drawPixel(sx, panelY, 30, 30, 60);
+            }
+        }
+        panelY -= 8;
+        
+        // ---------- Radius display ----------
+        drawNumber(panelX, panelY, G.lightRadius / 10);
+        panelY -= 10;
+        
+        // ---------- Intensity display ----------
+        drawNumber(panelX, panelY, G.lightIntensity / 10);
+        panelY -= 10;
+        
+        // ---------- Selected light ID ----------
+        drawNumber(panelX, panelY, G.selLight);
+        panelY -= 10;
+        
+        // ---------- Light count ----------
+        drawNumber(panelX, panelY, numLights);
+        
+        // Add light mode indicator (yellow dot in grid area)
+        drawPixel(5, 115, 255, 200, 0);
+        drawPixel(6, 115, 255, 200, 0);
+        drawPixel(5, 114, 255, 200, 0);
+        drawPixel(6, 114, 255, 200, 0);
+    }
 }
 
 //darken buttons
@@ -588,8 +875,57 @@ void mouse(int button, int state, int x, int y)
         //clicked on grid
         else
         {
+            // Light mode: place or select lights
+            if (G.addLight) {
+                // Check if clicking near an existing light (to select it)
+                int foundLight = -1;
+                for (int l = 0; l < numLights; l++) {
+                    if (!lights[l].active) continue;
+                    int dx = lights[l].x - G.mx * G.scale;
+                    int dy = lights[l].y - G.my * G.scale;
+                    if (dx*dx + dy*dy < 400) { // Within ~20 units
+                        foundLight = l;
+                        break;
+                    }
+                }
+                
+                if (foundLight >= 0) {
+                    // Select existing light
+                    G.selLight = foundLight + 1;
+                    printf("Selected light %d\\n", foundLight);
+                } else {
+                    // Place new light
+                    int slot = -1;
+                    for (int l = 0; l < MAX_LIGHTS; l++) {
+                        if (!lights[l].active) { slot = l; break; }
+                    }
+                    
+                    if (slot >= 0) {
+                        lights[slot].active = 1;
+                        lights[slot].x = G.mx * G.scale;
+                        lights[slot].y = G.my * G.scale;
+                        lights[slot].z = G.lightZ;
+                        lights[slot].radius = G.lightRadius;
+                        lights[slot].intensity = G.lightIntensity;
+                        lights[slot].r = G.lightR;
+                        lights[slot].g = G.lightG;
+                        lights[slot].b = G.lightB;
+                        lights[slot].type = G.lightType;
+                        lights[slot].spotAngle = 45;
+                        lights[slot].spotDirX = 0;
+                        lights[slot].spotDirY = 0;
+                        lights[slot].spotDirZ = -100;
+                        lights[slot].flickerType = G.lightFlicker;
+                        lights[slot].flickerSpeed = 5;
+                        
+                        if (slot >= numLights) numLights = slot + 1;
+                        G.selLight = slot + 1;
+                        printf("Added light %d at (%d, %d)\\n", slot, lights[slot].x, lights[slot].y);
+                    }
+                }
+            }
             //init new sector
-            if (G.addSect == 1)
+            else if (G.addSect == 1)
             {
                 S[numSect].ws = numWall;                                   //clear wall start
                 S[numSect].we = numWall + 1;                                 //add 1 to wall end
@@ -697,6 +1033,24 @@ void KeysDown(unsigned char key, int x, int y)
     if (key == 'm') { K.m = 1; }
     if (key == ',') { K.sr = 1; }
     if (key == '.') { K.sl = 1; }
+    
+    // Toggle light mode with 'L' key
+    if (key == 'l' || key == 'L') {
+        G.addLight = !G.addLight;
+        G.addSect = 0; // Exit sector mode
+        printf("Light mode: %s\n", G.addLight ? "ON" : "OFF");
+    }
+    
+    // Delete selected light with Delete key (127 = DEL)
+    if (key == 127 && G.selLight > 0) {
+        int idx = G.selLight - 1;
+        if (idx >= 0 && idx < numLights && lights[idx].active) {
+            lights[idx].active = 0;
+            printf("Deleted light %d\n", idx);
+            G.selLight = 0;
+        }
+    }
+    
     if (key == 'p')
     {
         if (previewWindow == 0) { createPreviewWindow(); }

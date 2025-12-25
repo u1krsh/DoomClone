@@ -46,6 +46,9 @@
 // Pickup system
 #include "pickups.h"
 
+// Dynamic lighting system
+#include "lighting.h"
+
 // Global pause state
 int gamePaused = 0;
 int hasBlueKey = 0; // Inventory flag
@@ -152,6 +155,38 @@ void load()
 				addPickup(type, x, y, z, respawns);
 			}
 		}
+	}
+
+	// Load lights from level file
+	int num_loaded_lights = 0;
+	if (fscanf(fp, "%i", &num_loaded_lights) != EOF) {
+		initLighting(); // Reset lighting system
+		if (num_loaded_lights > MAX_LIGHTS) num_loaded_lights = MAX_LIGHTS;
+		g_numLights = num_loaded_lights;
+		
+		for (s = 0; s < g_numLights; s++) {
+			int type, flicker, flickerSpeed, spotAngle;
+			int dirX, dirY, dirZ;
+			if (fscanf(fp, "%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i",
+				&g_lights[s].x, &g_lights[s].y, &g_lights[s].z,
+				&g_lights[s].radius, &g_lights[s].intensity,
+				&g_lights[s].r, &g_lights[s].g, &g_lights[s].b,
+				&type, &spotAngle, &dirX, &dirY, &dirZ,
+				&flicker, &flickerSpeed) == 15) {
+				g_lights[s].active = 1;
+				g_lights[s].type = type;
+				g_lights[s].spotAngle = spotAngle;
+				g_lights[s].spotDirX = dirX;
+				g_lights[s].spotDirY = dirY;
+				g_lights[s].spotDirZ = dirZ;
+				g_lights[s].flickerType = flicker;
+				g_lights[s].flickerSpeed = flickerSpeed;
+				g_lights[s].currentIntensity = (float)g_lights[s].intensity;
+			}
+		}
+	} else {
+		// No lights in file - initialize with default dark ambient
+		initLighting();
 	}
 
 	fclose(fp);
@@ -386,7 +421,8 @@ void clearBackground() {
 	int x, y;
 	for (y = 0; y < SH; y++) {
 		for (x = 0; x < SW; x++) {
-			pixel(x, y, 0, 60, 130); //clear background 
+			// Dark background with fog color tint
+			pixel(x, y, g_fog.r / 2, g_fog.g / 2, g_fog.b / 2);
 		}
 	}
 }
@@ -571,14 +607,17 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 				float worldDX = (screenXFromCenter * dist) / 200.0f;
 				int worldX = (int)(P.x + sinA * dist + cosA * worldDX);
 				int worldY = (int)(P.y + cosA * dist - sinA * worldDX);
+				int worldZ = S[s].z1; // Floor height
 				
 				int texU = (worldX / 2) % FLOOR1_WIDTH; int texV = (worldY / 2) % FLOOR1_HEIGHT;
 				if (texU < 0) texU += FLOOR1_WIDTH; if (texV < 0) texV += FLOOR1_HEIGHT;
 				int pixelIdx = (texV * FLOOR1_WIDTH + texU) * 3;
-				int shade = (int)(dist / 8.0f); if (shade > 80) shade = 80;
-				int r = FLOOR1[pixelIdx] - shade; if (r < 0) r = 0;
-				int g = FLOOR1[pixelIdx+1] - shade; if (g < 0) g = 0;
-				int b = FLOOR1[pixelIdx+2] - shade; if (b < 0) b = 0;
+				int r = FLOOR1[pixelIdx];
+				int g = FLOOR1[pixelIdx+1];
+				int b = FLOOR1[pixelIdx+2];
+				
+				// Apply dynamic lighting
+				applyLightingToPixel(&r, &g, &b, worldX, worldY, worldZ, dist);
 				pixel(x, y, r, g, b);
 			}
 		}
@@ -597,14 +636,17 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 				float worldDX = (screenXFromCenter * dist) / 200.0f;
 				int worldX = (int)(P.x + sinA * dist + cosA * worldDX);
 				int worldY = (int)(P.y + cosA * dist - sinA * worldDX);
+				int worldZ = S[s].z2; // Ceiling height
 				
 				int texU = (worldX / 2) % FLOOR1_WIDTH; int texV = (worldY / 2) % FLOOR1_HEIGHT;
 				if (texU < 0) texU += FLOOR1_WIDTH; if (texV < 0) texV += FLOOR1_HEIGHT;
 				int pixelIdx = (texV * FLOOR1_WIDTH + texU) * 3;
-				int shade = (int)(dist / 8.0f); if (shade > 80) shade = 80;
-				int r = FLOOR1[pixelIdx] - shade; if (r < 0) r = 0;
-				int g = FLOOR1[pixelIdx+1] - shade; if (g < 0) g = 0;
-				int b = FLOOR1[pixelIdx+2] - shade; if (b < 0) b = 0;
+				int r = FLOOR1[pixelIdx];
+				int g = FLOOR1[pixelIdx+1];
+				int b = FLOOR1[pixelIdx+2];
+				
+				// Apply dynamic lighting
+				applyLightingToPixel(&r, &g, &b, worldX, worldY, worldZ, dist);
 				pixel(x, y, r, g, b);
 			}
 		}
@@ -625,14 +667,17 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 				float worldDX = (screenXFromCenter * dist) / 200.0f;
 				int worldX = (int)(P.x + sinA * dist + cosA * worldDX);
 				int worldY = (int)(P.y + cosA * dist - sinA * worldDX);
+				int worldZ = S[s].z1; // Floor height
 				
 				int texU = (worldX / 2) % FLOOR1_WIDTH; int texV = (worldY / 2) % FLOOR1_HEIGHT;
 				if (texU < 0) texU += FLOOR1_WIDTH; if (texV < 0) texV += FLOOR1_HEIGHT;
 				int pixelIdx = (texV * FLOOR1_WIDTH + texU) * 3;
-				int shade = (int)(dist / 8.0f); if (shade > 80) shade = 80;
-				int r = FLOOR1[pixelIdx] - shade; if (r < 0) r = 0;
-				int g = FLOOR1[pixelIdx+1] - shade; if (g < 0) g = 0;
-				int b = FLOOR1[pixelIdx+2] - shade; if (b < 0) b = 0;
+				int r = FLOOR1[pixelIdx];
+				int g = FLOOR1[pixelIdx+1];
+				int b = FLOOR1[pixelIdx+2];
+				
+				// Apply dynamic lighting
+				applyLightingToPixel(&r, &g, &b, worldX, worldY, worldZ, dist);
 				pixel(x, y, r, g, b);
 			}
 			
@@ -649,14 +694,17 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 				float worldDX = (screenXFromCenter * dist) / 200.0f;
 				int worldX = (int)(P.x + sinA * dist + cosA * worldDX);
 				int worldY = (int)(P.y + cosA * dist - sinA * worldDX);
+				int worldZ = S[s].z2; // Ceiling height
 				
 				int texU = (worldX / 2) % FLOOR1_WIDTH; int texV = (worldY / 2) % FLOOR1_HEIGHT;
 				if (texU < 0) texU += FLOOR1_WIDTH; if (texV < 0) texV += FLOOR1_HEIGHT;
 				int pixelIdx = (texV * FLOOR1_WIDTH + texU) * 3;
-				int shade = (int)(dist / 8.0f); if (shade > 60) shade = 60;
-				int r = FLOOR1[pixelIdx] - shade - 10; if (r < 0) r = 0;
-				int g = FLOOR1[pixelIdx+1] - shade - 5; if (g < 0) g = 0;
-				int b = FLOOR1[pixelIdx+2] - shade; if (b < 0) b = 0;
+				int r = FLOOR1[pixelIdx];
+				int g = FLOOR1[pixelIdx+1];
+				int b = FLOOR1[pixelIdx+2];
+				
+				// Apply dynamic lighting
+				applyLightingToPixel(&r, &g, &b, worldX, worldY, worldZ, dist);
 				pixel(x, y, r, g, b);
 			}
 		}
@@ -664,6 +712,13 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 		// Draw the textured wall
 		int wall_height = y2_orig - y1_orig;
 		if (wall_height > 0) {
+			// Calculate world position for this column
+			int wallWorldX = W[w].x1 + (int)((W[w].x2 - W[w].x1) * t_step);
+			int wallWorldY = W[w].y1 + (int)((W[w].y2 - W[w].y1) * t_step);
+			
+			// Current depth for fog
+			float curDist = d1 + (d2 - d1) * t_step;
+			
 			for (y = y1; y < y2; y++) {
 				// Vertical perspective correction
 				float vt = ((float)(y - y1_orig) / (float)wall_height) * texHeight * W[w].v;
@@ -683,9 +738,18 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 				// Bounds check for pixel index
 				int maxPixel = texWidth * texHeight * 3;
 				if (pixelN >= 0 && pixelN + 2 < maxPixel) {
-					int r = texData[pixelN + 0] - dynamicShade; if (r < 0) { r = 0; }
-					int g = texData[pixelN + 1] - dynamicShade; if (g < 0) { g = 0; }
-					int b = texData[pixelN + 2] - dynamicShade; if (b < 0) { b = 0; }
+					// Get base texture color
+					int r = texData[pixelN + 0];
+					int g = texData[pixelN + 1];
+					int b = texData[pixelN + 2];
+					
+					// Calculate wall Z (vertical position)
+					float vertT = (float)(y - y1_orig) / (float)wall_height;
+					int wallWorldZ = S[s].z1 + (int)((S[s].z2 - S[s].z1) * (1.0f - vertT));
+					
+					// Apply dynamic lighting (colored lights + ambient)
+					applyLightingToPixel(&r, &g, &b, wallWorldX, wallWorldY, wallWorldZ, curDist);
+					
 					pixel(x, y, r, g, b);
 				}
 			}
@@ -698,6 +762,9 @@ void draw3D() {
 	float CS = M.cos[P.a];
 	float SN = M.sin[P.a];
 	int s, w, x;
+	
+	// Update light flicker animations
+	updateLightFlicker(T.fr1);
 	
 	// Initialize depth buffer
 	for (x = 0; x < SW; x++) {

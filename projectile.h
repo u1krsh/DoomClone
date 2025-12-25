@@ -8,6 +8,7 @@
 #include "textures/cace_fire.h"
 #include "textures/plasma_proj.h"
 #include "enemy.h"
+#include "lighting.h"  // For dynamic projectile lights
 
 // Types handled in data_types.h
 // Constants
@@ -36,6 +37,7 @@ typedef struct {
     int lifeTime; // ms
     int spawnTime;
     int isPlayerProjectile; // 1 if fired by player, 0 if fired by enemy
+    int lightIndex;         // Index of attached light (-1 if none)
 } Projectile;
 
 Projectile projectiles[MAX_PROJECTILES];
@@ -85,7 +87,10 @@ static int proj_checkWallCollision(float px, float py, int x1, int y1, int x2, i
 }
 
 void initProjectiles() {
-    for(int i=0; i<MAX_PROJECTILES; i++) projectiles[i].active = 0;
+    for(int i=0; i<MAX_PROJECTILES; i++) {
+        projectiles[i].active = 0;
+        projectiles[i].lightIndex = -1;  // No attached light
+    }
 }
 
 void spawnProjectile(float x, float y, float z, float angle, int type, int currentTime) {
@@ -139,6 +144,41 @@ void spawnProjectile(float x, float y, float z, float angle, int type, int curre
     else if (type == PROJ_TYPE_BULLET) projectiles[slot].damage = BULLET_DAMAGE;
     else if (type == PROJ_TYPE_SHELL) projectiles[slot].damage = SHELL_DAMAGE;
     else if (type == PROJ_TYPE_FIREBALL) projectiles[slot].damage = FIREBALL_DAMAGE;
+    
+    // Create dynamic light for projectile
+    int lightR = 255, lightG = 255, lightB = 255;
+    int lightRadius = 150;
+    int lightIntensity = 200;
+    int flickerType = FLICKER_NONE;
+    
+    if (type == PROJ_TYPE_PLASMA) {
+        lightR = 100; lightG = 200; lightB = 255;  // Cyan/blue
+        lightRadius = 200;
+        lightIntensity = 220;
+        flickerType = FLICKER_PULSE;
+    }
+    else if (type == PROJ_TYPE_FIREBALL) {
+        lightR = 255; lightG = 150; lightB = 50;   // Orange/fire
+        lightRadius = 250;
+        lightIntensity = 240;
+        flickerType = FLICKER_CANDLE;
+    }
+    else if (type == PROJ_TYPE_BULLET) {
+        lightR = 255; lightG = 220; lightB = 100;  // Yellow flash
+        lightRadius = 80;
+        lightIntensity = 180;
+    }
+    else if (type == PROJ_TYPE_SHELL) {
+        lightR = 255; lightG = 200; lightB = 50;   // Orange flash
+        lightRadius = 100;
+        lightIntensity = 160;
+    }
+    
+    // Add the light
+    projectiles[slot].lightIndex = addLight((int)x, (int)y, (int)z, 
+                                             lightRadius, lightIntensity,
+                                             lightR, lightG, lightB,
+                                             LIGHT_TYPE_POINT, flickerType);
 }
 
 void updateProjectiles(int currentTime) {
@@ -146,6 +186,11 @@ void updateProjectiles(int currentTime) {
         if (!projectiles[i].active) continue;
 
         if (currentTime - projectiles[i].spawnTime > projectiles[i].lifeTime) {
+            // Remove attached light when projectile expires
+            if (projectiles[i].lightIndex >= 0) {
+                removeLight(projectiles[i].lightIndex);
+                projectiles[i].lightIndex = -1;
+            }
             projectiles[i].active = 0;
             continue;
         }
@@ -170,6 +215,11 @@ void updateProjectiles(int currentTime) {
         }
 
         if (collided) {
+            // Remove attached light when projectile hits wall
+            if (projectiles[i].lightIndex >= 0) {
+                removeLight(projectiles[i].lightIndex);
+                projectiles[i].lightIndex = -1;
+            }
             projectiles[i].active = 0; // Destroy on wall hit
             continue;
         }
@@ -183,6 +233,11 @@ void updateProjectiles(int currentTime) {
         // Assume player radius 8
         if (distToPlayer < 8 + PROJ_RADIUS) {
             damagePlayer(projectiles[i].damage, currentTime);
+            // Remove attached light when projectile hits player
+            if (projectiles[i].lightIndex >= 0) {
+                removeLight(projectiles[i].lightIndex);
+                projectiles[i].lightIndex = -1;
+            }
             projectiles[i].active = 0;
             continue;
         }
@@ -190,6 +245,13 @@ void updateProjectiles(int currentTime) {
         projectiles[i].x = newX;
         projectiles[i].y = newY;
         projectiles[i].z = newZ;
+        
+        // Update attached light position
+        if (projectiles[i].lightIndex >= 0 && projectiles[i].lightIndex < MAX_LIGHTS) {
+            g_lights[projectiles[i].lightIndex].x = (int)newX;
+            g_lights[projectiles[i].lightIndex].y = (int)newY;
+            g_lights[projectiles[i].lightIndex].z = (int)newZ;
+        }
         
         // Enemy Collision (Simple distance check)
         // Only player projectiles hurt enemies

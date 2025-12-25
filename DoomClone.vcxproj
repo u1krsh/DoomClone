@@ -139,6 +139,7 @@
     <ClInclude Include="fps_counter.h" />
     <ClInclude Include="hud.h" />
     <ClInclude Include="level.h" />
+    <ClInclude Include="lighting.h" />
     <ClInclude Include="pickups.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="resource1.h" />
@@ -198,6 +199,7 @@
     <ClCompile Include="DoomTest.c" />
     <ClCompile Include="fps_counter.c" />
     <ClCompile Include="hud.c" />
+    <ClCompile Include="lighting.c" />
     <ClCompile Include="screen_melt.c" />
   </ItemGroup>
   <ItemGroup>
