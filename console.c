@@ -350,19 +350,20 @@ void consoleExecuteCommand() {
     else if (strcmp(command, "text_edit") == 0 || strcmp(command, "textedit") == 0) {
         consolePrint("Launching Texture Editor...");
         #ifdef _WIN32
-        // Launch the Python texture editor
         system("start python tools\\texture_editor_pro.py");
         #else
-        system("python tools/texture_editor_pro.py &");
+        // Game runs from cmake-build-debug, tools are in parent dir
+        system("cd .. && .venv/bin/python tools/texture_editor_pro.py &");
         #endif
     }
-    else if (strcmp(command, "map_edit") == 0 || strcmp(command, "mapedit") == 0) {
-        consolePrint("Launching Map Editor...");
+    else if (strcmp(command, "map_edit") == 0 || strcmp(command, "mapedit") == 0 ||
+             strcmp(command, "oracular") == 0 || strcmp(command, "editor") == 0) {
+        consolePrint("Launching Oracular Map Editor...");
         #ifdef _WIN32
-        // Launch the Python map editor
         system("start python tools\\oracular_editor.py");
         #else
-        system("python tools/oracular_editor.py &");
+        // Game runs from cmake-build-debug, tools are in parent dir
+        system("cd .. && .venv/bin/python tools/oracular_editor.py &");
         #endif
     }
     else if (strlen(command) > 0) {
