@@ -20,7 +20,7 @@
 #define PICKUP_KEY_BLUE 10       // Blue Key
 #define NUM_PICKUP_TYPES 11
 
-#define MAX_PICKUPS 64
+#define MAX_PICKUPS 128           // Increased from 64 to support large imported maps
 #define PICKUP_RADIUS 30         // Collection radius (Increased from 20)
 #define PICKUP_BOB_SPEED 4       // Floating animation speed
 #define PICKUP_BOB_HEIGHT 5      // Floating animation height

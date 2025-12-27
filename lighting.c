@@ -12,20 +12,20 @@
 //-----------------------------------------------------------------------------
 
 // Dark ambient by default for Doom-style atmosphere
-int g_ambientR = 15;
-int g_ambientG = 15;
-int g_ambientB = 20;
-int g_ambientIntensity = 30;  // Very dark (0-255)
+int g_ambientR = 150;
+int g_ambientG = 150;
+int g_ambientB = 160;
+int g_ambientIntensity = 180;  // Brighter ambient when no lights in level
 
-// Fog settings - atmospheric fog for depth
+// Fog settings - dark blue-gray fog
 FogSettings g_fog = {
     .enabled = 1,
-    .r = 20,          // Slightly brighter fog color
-    .g = 25,
-    .b = 35,
-    .startDist = 50.0f,   // Fog starts closer
-    .endDist = 500.0f,    // Full fog at shorter distance
-    .density = 0.004f     // Stronger density for more visible effect
+    .r = 10,
+    .g = 12,
+    .b = 18,
+    .startDist = 100.0f,
+    .endDist = 800.0f,
+    .density = 0.002f
 };
 
 // Light array
@@ -76,8 +76,8 @@ void initLighting(void) {
         g_lights[i].x = 0;
         g_lights[i].y = 0;
         g_lights[i].z = 0;
-        g_lights[i].radius = 400;    // Increased for better coverage
-        g_lights[i].intensity = 220;  // Slightly brighter
+        g_lights[i].radius = 200;
+        g_lights[i].intensity = 200;
         g_lights[i].r = 255;
         g_lights[i].g = 255;
         g_lights[i].b = 255;
@@ -198,10 +198,8 @@ void calculateSingleLight(const Light *light,
     
     // Calculate falloff (quadratic for realistic lighting)
     float normalizedDist = dist / (float)light->radius;
-    // Use smooth linear falloff instead of quadratic for more even light spread
     float falloff = 1.0f - normalizedDist;
-    // Apply slight curve for soft edge but not as aggressive as quadratic
-    falloff = falloff * (0.5f + 0.5f * falloff);
+    falloff = falloff * falloff;  // Quadratic falloff
     
     // Handle spotlight cone check
     if (light->type == LIGHT_TYPE_SPOT) {
