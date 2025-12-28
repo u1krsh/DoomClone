@@ -93,7 +93,8 @@ int mouseEnabled = 0;
 
 void load()
 {
-	FILE* fp = fopen("level.h", "r");
+	// Load from source directory so editor changes are immediately visible
+	FILE* fp = fopen("/media/u1krsh/Computer HD/PROGRAM/VSPRO/DoomClone/level.h", "r");
 	if (fp == NULL) { printf("Error opening level.h"); return; }
 	int s, w;
 
@@ -182,11 +183,26 @@ void load()
 				g_lights[s].flickerType = flicker;
 				g_lights[s].flickerSpeed = flickerSpeed;
 				g_lights[s].currentIntensity = (float)g_lights[s].intensity;
+				printf("Loaded light %d: pos(%d,%d,%d) R=%d G=%d B=%d radius=%d intensity=%d\n",
+					s, g_lights[s].x, g_lights[s].y, g_lights[s].z,
+					g_lights[s].r, g_lights[s].g, g_lights[s].b,
+					g_lights[s].radius, g_lights[s].intensity);
 			}
+		}
+		
+		// Lower ambient light when we have lights in the level
+		// so colored lights are more visible
+		if (g_numLights > 0) {
+			g_ambientIntensity = 80;  // Moderate ambient
+			g_ambientR = 60;
+			g_ambientG = 60;
+			g_ambientB = 70;
+			printf("LIGHTING: Loaded %d lights, ambient set to %d\n", g_numLights, g_ambientIntensity);
 		}
 	} else {
 		// No lights in file - initialize with default dark ambient
 		initLighting();
+		printf("LIGHTING: No lights found in file\n");
 	}
 
 	fclose(fp);
