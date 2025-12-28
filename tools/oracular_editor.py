@@ -68,6 +68,7 @@ class Tool(Enum):
     CREATE_SECTOR = 1
     VERTEX_EDIT = 2
     ENTITY = 3
+    LIGHT = 4  # ADDED: Light editing tool
 
 # Viewport types
 class ViewType(Enum):
@@ -123,6 +124,22 @@ class Pickup:
         self.z = z
         self.pickup_type = pickup_type
         self.respawns = respawns
+        self.active = 1
+
+# ADDED: Light class for dynamic lighting
+class Light:
+    def __init__(self, x=0, y=0, z=30, radius=150, intensity=200,
+                 r=255, g=255, b=200, light_type=0, flicker=0):
+        self.x = x
+        self.y = y
+        self.z = z
+        self.radius = radius        # World units (reach of light)
+        self.intensity = intensity  # Brightness 0-255
+        self.r = r                  # Red component 0-255
+        self.g = g                  # Green component 0-255
+        self.b = b                  # Blue component 0-255
+        self.light_type = light_type  # 0=Point, 1=Spot
+        self.flicker = flicker      # 0=None, 1=Candle, 2=Strobe, 3=Pulse, 4=Random
         self.active = 1
 
 
@@ -205,7 +222,8 @@ class OracularEditor:
             (Tool.SELECT, "select.png"),
             (Tool.CREATE_SECTOR, "sector.png"),
             (Tool.VERTEX_EDIT, "vertex.png"),
-            (Tool.ENTITY, "entity.png")
+            (Tool.ENTITY, "entity.png"),
+            (Tool.LIGHT, "light.png")  # ADDED: Light tool icon
         ]:
             try:
                 path = os.path.join(icon_dir, filename)
@@ -267,7 +285,7 @@ class OracularEditor:
             "File": ["New (Ctrl+N)", "Open (Ctrl+O)", "Save (Ctrl+S)", "---", "Exit"],
             "Edit": ["Undo (Ctrl+Z)", "Redo (Ctrl+Y)", "---", "Delete (Del)", "---", "Select All"],
             "View": ["Toggle Grid (G)", "Toggle Snap (Shift+S)"],
-            "Tools": ["Select (1)", "Create Sector (2)", "Vertex Edit (3)", "Entity (4)"],
+            "Tools": ["Select (1)", "Create Sector (2)", "Vertex Edit (3)", "Entity (4)", "Light (5)"],
             "Help": ["About"]
         }
         
@@ -289,6 +307,34 @@ class OracularEditor:
         # ADDED: Pickup defaults
         self.prop_pickup_type = 0
         self.entity_mode = "ENEMY" # "ENEMY" or "PICKUP"
+        
+        # ADDED: Light list and selection
+        self.lights: List[Light] = []
+        self.selected_light = None
+        
+        # ADDED: Light property defaults
+        self.prop_light_r = 255
+        self.prop_light_g = 255
+        self.prop_light_b = 200  # Warm white default
+        self.prop_light_radius = 150
+        self.prop_light_intensity = 200
+        self.prop_light_type = 0  # 0=Point, 1=Spot
+        self.prop_light_flicker = 0  # 0=None, 1=Candle, 2=Strobe, 3=Pulse
+        
+        # Light type and flicker names for UI
+        self.light_type_names = ["Point", "Spot"]
+        self.flicker_names = ["None", "Candle", "Strobe", "Pulse", "Random"]
+        
+        # Color presets for quick selection
+        self.light_presets = [
+            ("Warm White", 255, 255, 200),
+            ("Cool White", 220, 240, 255),
+            ("Red Alarm", 255, 50, 50),
+            ("Blue", 50, 100, 255),
+            ("Green", 50, 255, 100),
+            ("Orange Fire", 255, 150, 50),
+            ("Purple", 200, 50, 255),
+        ]
         
         # ADDED: textures
         self.textures: List[Texture] = []
@@ -819,7 +865,8 @@ class OracularEditor:
             'walls': copy.deepcopy(self.walls),
             'player': copy.deepcopy(self.player),
             'enemies': copy.deepcopy(self.enemies),
-            'pickups': copy.deepcopy(self.pickups)
+            'pickups': copy.deepcopy(self.pickups),
+            'lights': copy.deepcopy(self.lights)
         }
         self.undo_stack.append(state)
         self.redo_stack.clear()
@@ -838,7 +885,10 @@ class OracularEditor:
         current_state = {
             'sectors': copy.deepcopy(self.sectors),
             'walls': copy.deepcopy(self.walls),
-            'player': copy.deepcopy(self.player)
+            'player': copy.deepcopy(self.player),
+            'enemies': copy.deepcopy(self.enemies),
+            'pickups': copy.deepcopy(self.pickups),
+            'lights': copy.deepcopy(self.lights)
         }
         self.redo_stack.append(current_state)
         
@@ -848,6 +898,8 @@ class OracularEditor:
         self.walls = state['walls']
         self.player = state['player']
         self.enemies = state.get('enemies', [])
+        self.pickups = state.get('pickups', [])
+        self.lights = state.get('lights', [])
         
         # Reset selection if invalid
         if self.selected_sector is not None and self.selected_sector >= len(self.sectors):
@@ -858,6 +910,8 @@ class OracularEditor:
             self.selected_enemy = None
         if self.selected_pickup is not None and self.selected_pickup >= len(self.pickups):
             self.selected_pickup = None
+        if self.selected_light is not None and self.selected_light >= len(self.lights):
+            self.selected_light = None
         self.selected_vertices = [] # Clear vertex selection to be safe
         
         print("Undo performed")
@@ -872,7 +926,10 @@ class OracularEditor:
         current_state = {
             'sectors': copy.deepcopy(self.sectors),
             'walls': copy.deepcopy(self.walls),
-            'player': copy.deepcopy(self.player)
+            'player': copy.deepcopy(self.player),
+            'enemies': copy.deepcopy(self.enemies),
+            'pickups': copy.deepcopy(self.pickups),
+            'lights': copy.deepcopy(self.lights)
         }
         self.undo_stack.append(current_state)
         
@@ -882,6 +939,8 @@ class OracularEditor:
         self.walls = state['walls']
         self.player = state['player']
         self.enemies = state.get('enemies', [])
+        self.pickups = state.get('pickups', [])
+        self.lights = state.get('lights', [])
         
         print("Redo performed")
 
@@ -913,6 +972,13 @@ class OracularEditor:
                 self.prop_wall_v = target.v
             elif isinstance(target, Enemy):
                 self.prop_enemy_type = target.enemy_type
+            elif isinstance(target, Light):
+                self.prop_light_r = target.r
+                self.prop_light_g = target.g
+                self.prop_light_b = target.b
+                self.prop_light_radius = target.radius
+                self.prop_light_intensity = target.intensity
+                self.prop_light_flicker = target.flicker
         self.edit_field = None
         self.edit_buffer = ""
 
@@ -952,6 +1018,8 @@ class OracularEditor:
             self.current_tool = Tool.VERTEX_EDIT
         elif event.key == pygame.K_4:
             self.current_tool = Tool.ENTITY
+        elif event.key == pygame.K_5:
+            self.current_tool = Tool.LIGHT
         elif event.key == pygame.K_g:
             self.show_grid = not self.show_grid
         elif event.key == pygame.K_s and pygame.key.get_mods() & pygame.KMOD_SHIFT:
@@ -1068,6 +1136,11 @@ class OracularEditor:
                         if self.selected_enemy is not None:
                             self.save_undo_snapshot()
                             self.dragging_geometry = True
+                    elif self.current_tool == Tool.LIGHT:
+                        self.handle_light_click(vp, event.pos)
+                        if self.selected_light is not None:
+                            self.save_undo_snapshot()
+                            self.dragging_geometry = True
                 else:
                     vp.is_active = False
             
@@ -1160,6 +1233,23 @@ class OracularEditor:
                 pickup.x = round(pickup.x / vp.grid_size) * vp.grid_size
                 pickup.y = round(pickup.y / vp.grid_size) * vp.grid_size
 
+    def drag_light(self, pos):
+        """Drag selected light to new position"""
+        vp = self.active_viewport
+        if not vp or vp.view_type == ViewType.CAMERA_3D:
+            return
+        
+        if self.selected_light is None or self.selected_light >= len(self.lights):
+            return
+            
+        wx, wy = vp.screen_to_world(pos[0], pos[1])
+        
+        if self.snap_to_grid:
+            wx, wy = vp.snap_to_grid(wx, wy)
+        
+        light = self.lights[self.selected_light]
+        light.x = int(wx)
+        light.y = int(wy)
 
     # ADDED: property click handler
     def handle_property_click(self, pos):
@@ -1276,6 +1366,8 @@ class OracularEditor:
                  self.drag_vertices(event.pos)
              elif self.current_tool == Tool.ENTITY and (self.selected_enemy is not None or self.selected_pickup is not None):
                  self.drag_entity(event.pos)
+             elif self.current_tool == Tool.LIGHT and self.selected_light is not None:
+                 self.drag_light(event.pos)
              self.last_mouse_pos = event.pos
              return
 
@@ -1429,6 +1521,70 @@ class OracularEditor:
             self.selected_pickup = len(self.pickups) - 1
             self.selected_enemy = None
             print(f"Created pickup at {int(wx)}, {int(wy)}")
+
+    def handle_light_click(self, vp, pos):
+        """Handle mouse click in LIGHT tool mode"""
+        if vp.view_type == ViewType.CAMERA_3D:
+            return
+            
+        wx, wy = vp.screen_to_world(pos[0], pos[1])
+        
+        # Check if clicking on existing light
+        clicked_light = None
+        min_dist = float('inf')
+        
+        for i, light in enumerate(self.lights):
+            if light.active:
+                dist = math.sqrt((wx - light.x)**2 + (wy - light.y)**2)
+                click_radius = max(15, light.radius * 0.1) / vp.zoom
+                if dist < click_radius:
+                    if dist < min_dist:
+                        min_dist = dist
+                        clicked_light = i
+        
+        if clicked_light is not None:
+            self.selected_light = clicked_light
+            self.selected_sector = None
+            self.selected_wall = None
+            self.selected_enemy = None
+            self.selected_pickup = None
+            # Load light properties into defaults for editing
+            light = self.lights[clicked_light]
+            self.prop_light_r = light.r
+            self.prop_light_g = light.g
+            self.prop_light_b = light.b
+            self.prop_light_radius = light.radius
+            self.prop_light_intensity = light.intensity
+            self.prop_light_type = light.light_type
+            self.prop_light_flicker = light.flicker
+            print(f"Selected Light {clicked_light}")
+            return
+        
+        # If clicking on nothing and have selection, deselect
+        if self.selected_light is not None:
+            self.selected_light = None
+            print("Deselected light")
+            return
+        
+        # Create new light
+        if self.snap_to_grid:
+            wx, wy = vp.snap_to_grid(wx, wy)
+        
+        self.save_undo_snapshot()
+        
+        new_light = Light(
+            x=int(wx), y=int(wy), z=30,
+            radius=self.prop_light_radius,
+            intensity=self.prop_light_intensity,
+            r=self.prop_light_r,
+            g=self.prop_light_g,
+            b=self.prop_light_b,
+            light_type=self.prop_light_type,
+            flicker=self.prop_light_flicker
+        )
+        self.lights.append(new_light)
+        self.selected_light = len(self.lights) - 1
+        print(f"Created light at {int(wx)}, {int(wy)} with color ({self.prop_light_r}, {self.prop_light_g}, {self.prop_light_b})")
 
 
     def finish_sector_creation(self):
@@ -1843,6 +1999,12 @@ class OracularEditor:
                 self.pickups.pop(self.selected_pickup)
                 self.selected_pickup = None
                 print("Deleted pickup")
+        
+        elif self.selected_light is not None:
+            if 0 <= self.selected_light < len(self.lights):
+                self.lights.pop(self.selected_light)
+                self.selected_light = None
+                print("Deleted light")
     
     def new_level(self):
         """Create new level"""
@@ -1856,6 +2018,8 @@ class OracularEditor:
         self.selected_enemy = None
         self.pickups = []
         self.selected_pickup = None
+        self.lights = []
+        self.selected_light = None
         self.entity_mode = "ENEMY"
         self.creating_sector = False
         self.sector_vertices = []
@@ -1895,6 +2059,15 @@ class OracularEditor:
                 f.write(f"\n{len(self.pickups)}\n")
                 for p in self.pickups:
                     f.write(f"{p.x} {p.y} {p.z} {p.pickup_type} {p.respawns}\n")
+                
+                # Write lights
+                f.write(f"\n{len(self.lights)}\n")
+                for light in self.lights:
+                    if light.active:
+                        # Format: x y z radius intensity r g b type spotAngle dirX dirY dirZ flicker flickerSpeed
+                        f.write(f"{light.x} {light.y} {light.z} {light.radius} {light.intensity} ")
+                        f.write(f"{light.r} {light.g} {light.b} ")
+                        f.write(f"{light.light_type} 0 0 0 0 {light.flicker} 100\n")
             
             print(f"Level saved to {self.current_level_path}")
             self.notification_message = "Level Saved!"
@@ -1974,10 +2147,44 @@ class OracularEditor:
                  except ValueError:
                      print("No pickups found")
             
+            # Parse lights
+            self.lights = []
+            if 'num_pickups' in locals():
+                light_line = pickup_line + num_pickups + 2
+            else:
+                light_line = pickup_line + 2
+            
+            if light_line < len(lines):
+                try:
+                    num_lights = int(lines[light_line].strip())
+                    for i in range(light_line + 1, light_line + 1 + num_lights):
+                        if i < len(lines):
+                            parts = list(map(int, lines[i].split()))
+                            if len(parts) >= 15:
+                                # Full format: x y z radius intensity r g b type spotAngle dirX dirY dirZ flicker flickerSpeed
+                                light = Light(
+                                    x=parts[0], y=parts[1], z=parts[2],
+                                    radius=parts[3], intensity=parts[4],
+                                    r=parts[5], g=parts[6], b=parts[7],
+                                    light_type=parts[8], flicker=parts[13]
+                                )
+                                self.lights.append(light)
+                            elif len(parts) >= 8:
+                                # Minimal format: x y z radius intensity r g b
+                                light = Light(
+                                    x=parts[0], y=parts[1], z=parts[2],
+                                    radius=parts[3], intensity=parts[4],
+                                    r=parts[5], g=parts[6], b=parts[7]
+                                )
+                                self.lights.append(light)
+                    print(f"Loaded {num_lights} lights")
+                except ValueError:
+                    print("No lights found or invalid format")
+            
             # Center viewports on the loaded geometry
             self.center_viewports_on_level()
             
-            print(f"Loaded {len(self.sectors)} sectors, {len(self.walls)} walls from {self.current_level_path}")
+            print(f"Loaded {len(self.sectors)} sectors, {len(self.walls)} walls, {len(self.lights)} lights from {self.current_level_path}")
         except Exception as e:
             print(f"Error loading level: {e}")
     
@@ -2152,7 +2359,7 @@ class OracularEditor:
                         (toolbar_width, WINDOW_HEIGHT - self.STATUS_BAR_HEIGHT), 1)
         
         # Tool buttons
-        tools = [Tool.SELECT, Tool.CREATE_SECTOR, Tool.VERTEX_EDIT, Tool.ENTITY]
+        tools = [Tool.SELECT, Tool.CREATE_SECTOR, Tool.VERTEX_EDIT, Tool.ENTITY, Tool.LIGHT]
         button_y = 40
         button_size = 48
         button_margin = (toolbar_width - button_size) // 2
@@ -2194,7 +2401,7 @@ class OracularEditor:
         if pos[0] > toolbar_width or pos[1] < 30 or pos[1] > WINDOW_HEIGHT - self.STATUS_BAR_HEIGHT:
             return False
             
-        tools = [Tool.SELECT, Tool.CREATE_SECTOR, Tool.VERTEX_EDIT, Tool.ENTITY]
+        tools = [Tool.SELECT, Tool.CREATE_SECTOR, Tool.VERTEX_EDIT, Tool.ENTITY, Tool.LIGHT]
         button_y = 40
         button_size = 48
         button_margin = (toolbar_width - button_size) // 2
@@ -2324,6 +2531,11 @@ class OracularEditor:
             # Draw pickups
             for i, pickup in enumerate(self.pickups):
                 self.draw_pickup_2d(vp, pickup, i == self.selected_pickup)
+            
+            # Draw lights
+            for i, light in enumerate(self.lights):
+                if light.active:
+                    self.draw_light_2d(vp, light, i == self.selected_light)
         
         elif vp.view_type in (ViewType.FRONT, ViewType.SIDE):
             # Front/Side view: Draw sectors as rectangles with height
@@ -2532,6 +2744,46 @@ class OracularEditor:
         if is_selected:
             pygame.draw.rect(self.screen, (255, 255, 255), rect, 1)
 
+    def draw_light_2d(self, vp, light, is_selected):
+        """Draw light source in 2D view"""
+        lx, ly = vp.world_to_screen(light.x, light.y)
+        
+        # Light color
+        color = (light.r, light.g, light.b)
+        
+        # Draw radius indicator (scaled by zoom, but capped)
+        radius_pixels = int(light.radius * vp.zoom * 0.15)
+        radius_pixels = max(8, min(radius_pixels, 100))  # Clamp for visibility
+        
+        # Draw outer glow circle (semi-transparent)
+        glow_surf = pygame.Surface((radius_pixels * 2, radius_pixels * 2), pygame.SRCALPHA)
+        glow_color = (light.r, light.g, light.b, 60)
+        pygame.draw.circle(glow_surf, glow_color, (radius_pixels, radius_pixels), radius_pixels)
+        self.screen.blit(glow_surf, (lx - radius_pixels, ly - radius_pixels))
+        
+        # Draw radius ring
+        pygame.draw.circle(self.screen, color, (lx, ly), radius_pixels, 1)
+        
+        # Draw center dot (bright)
+        center_size = 6 if is_selected else 4
+        pygame.draw.circle(self.screen, color, (lx, ly), center_size)
+        
+        # Draw selection highlight
+        if is_selected:
+            pygame.draw.circle(self.screen, (255, 255, 255), (lx, ly), center_size + 3, 2)
+            # Also highlight the radius ring
+            pygame.draw.circle(self.screen, (255, 255, 255), (lx, ly), radius_pixels + 2, 1)
+        
+        # Draw small light icon (sun rays)
+        ray_len = 8 if is_selected else 5
+        for angle in [0, 45, 90, 135, 180, 225, 270, 315]:
+            rad = math.radians(angle)
+            x1 = lx + int(math.cos(rad) * (center_size + 2))
+            y1 = ly + int(math.sin(rad) * (center_size + 2))
+            x2 = lx + int(math.cos(rad) * (center_size + ray_len))
+            y2 = ly + int(math.sin(rad) * (center_size + ray_len))
+            pygame.draw.line(self.screen, color, (x1, y1), (x2, y2), 1)
+
     
     def draw_sector_creation_preview(self, vp):
         """Draw preview of sector being created"""
@@ -2587,6 +2839,10 @@ class OracularEditor:
         # Draw pickups in 3D
         if len(self.pickups) > 0:
             self.draw_3d_pickups(vp)
+        
+        # Draw lights in 3D
+        if len(self.lights) > 0:
+            self.draw_3d_lights(vp)
         
         # Draw controls overlay if this is the active viewport
         if vp.is_active:
@@ -2923,6 +3179,77 @@ class OracularEditor:
                 if rect.colliderect(vp.rect):
                     pygame.draw.rect(self.screen, (0, 255, 0), rect) # Fallback green box
 
+    def draw_3d_lights(self, vp):
+        """Draw lights in 3D view as glowing spheres"""
+        cam_x = self.player.x
+        cam_y = self.player.y
+        cam_z = self.player.z
+        cam_angle = math.radians(self.player.a)
+        
+        cos_a = math.cos(cam_angle)
+        sin_a = math.sin(cam_angle)
+        
+        # Sort lights by distance (far to near for proper draw order)
+        sorted_lights = []
+        for i, light in enumerate(self.lights):
+            if light.active:
+                dist_sq = (light.x - cam_x)**2 + (light.y - cam_y)**2
+                sorted_lights.append((dist_sq, light, i))
+        
+        sorted_lights.sort(key=lambda x: x[0], reverse=True)
+        
+        for _, light, idx in sorted_lights:
+            rel_x = light.x - cam_x
+            rel_y = light.y - cam_y
+            
+            # Rotate by camera angle
+            rot_x = rel_x * cos_a - rel_y * sin_a
+            rot_y = rel_x * sin_a + rel_y * cos_a
+            
+            # Skip if behind camera
+            if rot_y < 1:
+                continue
+            
+            # Project to screen
+            scale = 200
+            screen_x = int(vp.rect.x + vp.rect.width // 2 + rot_x * scale / rot_y)
+            screen_y = int(vp.rect.y + vp.rect.height // 2 - (light.z - cam_z) * scale / rot_y)
+            
+            # Size based on distance (lights are bigger visual to show glow)
+            glow_size = int(light.radius * 0.5 * scale / rot_y)
+            glow_size = max(5, min(glow_size, 150))
+            
+            center_size = max(3, glow_size // 5)
+            
+            # Skip if too small
+            if center_size < 1:
+                continue
+            
+            # Light color
+            color = (light.r, light.g, light.b)
+            
+            # Draw outer glow (multiple transparent circles)
+            for i in range(3):
+                glow_radius = glow_size - i * (glow_size // 4)
+                if glow_radius > 0:
+                    glow_surf = pygame.Surface((glow_radius * 2, glow_radius * 2), pygame.SRCALPHA)
+                    alpha = 40 - i * 10
+                    glow_color = (light.r, light.g, light.b, alpha)
+                    pygame.draw.circle(glow_surf, glow_color, (glow_radius, glow_radius), glow_radius)
+                    pos_x = screen_x - glow_radius
+                    pos_y = screen_y - glow_radius
+                    if vp.rect.collidepoint(screen_x, screen_y):
+                        self.screen.blit(glow_surf, (pos_x, pos_y))
+            
+            # Draw center bright point
+            if vp.rect.collidepoint(screen_x, screen_y):
+                pygame.draw.circle(self.screen, color, (screen_x, screen_y), center_size)
+                
+                # Draw selection ring if selected
+                is_selected = (idx == self.selected_light)
+                if is_selected:
+                    pygame.draw.circle(self.screen, (255, 255, 255), (screen_x, screen_y), center_size + 3, 2)
+
     
     def clip_behind_camera(self, x1, y1, z1, x2, y2, z2):
         """Clip line segment behind camera"""
@@ -3254,6 +3581,106 @@ class OracularEditor:
             else:
                 draw_texture_selector("Default Pickup", self.prop_pickup_type, self.pickup_textures, self, 'prop_pickup_type')
 
+        elif self.selected_light is not None and self.selected_light < len(self.lights):
+            # Light is selected - show its properties
+            light = self.lights[self.selected_light]
+            draw_header(f"LIGHT #{self.selected_light}")
+            
+            draw_section("Transform")
+            draw_field("Pos X", light, 'x', light.x)
+            draw_field("Pos Y", light, 'y', light.y)
+            draw_field("Pos Z", light, 'z', light.z)
+            
+            draw_section("Lighting")
+            draw_field("Radius", light, 'radius', light.radius)
+            draw_field("Intensity", light, 'intensity', light.intensity)
+            
+            # Color preview box
+            color_box_h = 24
+            color_box_rect = pygame.Rect(panel_x + 20, cy, panel_width - 40, color_box_h)
+            pygame.draw.rect(self.screen, (light.r, light.g, light.b), color_box_rect)
+            pygame.draw.rect(self.screen, Colors.SEPARATOR, color_box_rect, 1)
+            cy += color_box_h + 8
+            
+            draw_section("Color (RGB)")
+            draw_field("Red", light, 'r', light.r)
+            draw_field("Green", light, 'g', light.g)
+            draw_field("Blue", light, 'b', light.b)
+            
+            draw_section("Effects")
+            draw_field("Flicker", light, 'flicker', light.flicker)
+            
+            # Flicker name hint
+            flicker_name = self.flicker_names[light.flicker] if light.flicker < len(self.flicker_names) else "Unknown"
+            name_surf = self.font_small.render(f"({flicker_name})", True, Colors.TEXT_DIM)
+            self.screen.blit(name_surf, (panel_x + panel_width - name_surf.get_width() - 12, cy - 24))
+
+        elif self.current_tool == Tool.LIGHT:
+            draw_header("TOOL: LIGHT")
+            
+            draw_section("Click to place a light")
+            
+            # Color preview box
+            color_box_h = 30
+            color_box_rect = pygame.Rect(panel_x + 20, cy, panel_width - 40, color_box_h)
+            pygame.draw.rect(self.screen, (self.prop_light_r, self.prop_light_g, self.prop_light_b), color_box_rect)
+            pygame.draw.rect(self.screen, Colors.SEPARATOR, color_box_rect, 1)
+            cy += color_box_h + 12
+            
+            draw_section("Default Color")
+            draw_field("Red", self, 'prop_light_r', self.prop_light_r)
+            draw_field("Green", self, 'prop_light_g', self.prop_light_g)
+            draw_field("Blue", self, 'prop_light_b', self.prop_light_b)
+            
+            # Color presets
+            draw_section("Presets")
+            preset_x = panel_x + 12
+            preset_y = cy
+            preset_size = 24
+            preset_gap = 4
+            
+            for i, (name, r, g, b) in enumerate(self.light_presets):
+                x = preset_x + (i % 4) * (preset_size + preset_gap)
+                y = preset_y + (i // 4) * (preset_size + preset_gap)
+                rect = pygame.Rect(x, y, preset_size, preset_size)
+                pygame.draw.rect(self.screen, (r, g, b), rect)
+                pygame.draw.rect(self.screen, Colors.SEPARATOR, rect, 1)
+                
+                # Highlight if current color matches
+                if r == self.prop_light_r and g == self.prop_light_g and b == self.prop_light_b:
+                    pygame.draw.rect(self.screen, (255, 255, 255), rect, 2)
+                
+                # Store button for click
+                def make_preset_action(pr, pg, pb):
+                    def action():
+                        self.prop_light_r = pr
+                        self.prop_light_g = pg
+                        self.prop_light_b = pb
+                        # Also update selected light if any
+                        if self.selected_light is not None and self.selected_light < len(self.lights):
+                            self.lights[self.selected_light].r = pr
+                            self.lights[self.selected_light].g = pg
+                            self.lights[self.selected_light].b = pb
+                    return action
+                
+                self.ui_buttons.append({'rect': rect, 'action': make_preset_action(r, g, b)})
+            
+            cy = preset_y + ((len(self.light_presets) + 3) // 4) * (preset_size + preset_gap) + 8
+            
+            draw_section("Properties")
+            draw_field("Radius", self, 'prop_light_radius', self.prop_light_radius)
+            draw_field("Intensity", self, 'prop_light_intensity', self.prop_light_intensity)
+            draw_field("Flicker", self, 'prop_light_flicker', self.prop_light_flicker)
+            
+            # Flicker name hint
+            flicker_name = self.flicker_names[self.prop_light_flicker] if self.prop_light_flicker < len(self.flicker_names) else "Unknown"
+            name_surf = self.font_small.render(f"({flicker_name})", True, Colors.TEXT_DIM)
+            self.screen.blit(name_surf, (panel_x + panel_width - name_surf.get_width() - 12, cy - 24))
+            
+            # Light count info
+            cy += 10
+            draw_info("Lights", str(len(self.lights)))
+
         else:
             draw_header("SCENE INFO")
             
@@ -3262,6 +3689,7 @@ class OracularEditor:
             draw_info("Total Sectors", str(len(self.sectors)))
             draw_info("Total Enemies", str(len(self.enemies)))
             draw_info("Total Pickups", str(len(self.pickups)))
+            draw_info("Total Lights", str(len(self.lights)))
             
             draw_section("Editor")
             draw_info("Grid Size", str(self.active_viewport.grid_size) if self.active_viewport else "8")

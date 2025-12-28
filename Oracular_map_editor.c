@@ -135,7 +135,7 @@ typedef struct
 void save() //save file
 {
     int w, s, l;
-    FILE* fp = fopen("D:\\PROGRAM\\VSPRO\\DoomClone\\level.h", "w");
+    FILE* fp = fopen("level.h", "w");
     if (fp == NULL) { printf("Error opening the file level.h"); return; }
     if (numSect == 0) { fclose(fp); return; } //nothing, clear file 
 
@@ -177,7 +177,7 @@ void save() //save file
 
 void load()
 {
-    FILE* fp = fopen("D:\\PROGRAM\\VSPRO\\DoomClone\\level.h", "r");
+    FILE* fp = fopen("level.h", "r");
     if (fp == NULL) { printf("Error opening level.h"); return; }
     int s, w;
 

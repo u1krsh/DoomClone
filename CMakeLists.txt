@@ -33,8 +33,13 @@ target_link_libraries(DoomClone
 )
 
 # ================= COPY RUNTIME DATA FILES =================
-# level.h is loaded at runtime via fopen(), not compiled
-file(COPY ${CMAKE_SOURCE_DIR}/level.h DESTINATION ${CMAKE_BINARY_DIR})
+# Copy level.h at build time so map editor changes are picked up
+add_custom_command(TARGET DoomClone POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/level.h"
+        "${CMAKE_BINARY_DIR}/level.h"
+    COMMENT "Copying level.h to build directory"
+)
 
 # Copy sounds directory for OpenAL audio
 file(COPY ${CMAKE_SOURCE_DIR}/sounds DESTINATION ${CMAKE_BINARY_DIR})

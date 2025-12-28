@@ -30,6 +30,7 @@ compile_commands.json
 *.dll
 *.lib
 *.exp
+*.idea
 !DoomClone.exe # Keep the main executable if desired, but usually ignored
 !glut32.dll # Keep external dependencies if they are in the root
 

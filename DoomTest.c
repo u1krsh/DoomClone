@@ -1516,6 +1516,7 @@ void display() {
 			updateScreenShake(T.fr1);
 			updateParticles(T.fr1);
 			updateProjectiles(T.fr1);
+			updateMuzzleFlashLight(T.fr1);
 			
 			// Normal game rendering
 			clearBackground();
@@ -1577,6 +1578,10 @@ void display() {
 							} else if (weapon.currentWeapon == WEAPON_PISTOL) {
 								addScreenShake(1.0f);
 							}
+							
+							// Trigger muzzle flash lighting effect
+							triggerMuzzleFlashLight(P.x, P.y, P.z, weapon.currentWeapon, T.fr1);
+							
 							K.firePressed = 1;  // Mark as pressed to prevent auto-fire
 						}
 					}

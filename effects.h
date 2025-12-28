@@ -6,6 +6,7 @@
 
 #include <stdlib.h>
 #include <math.h>
+#include "lighting.h"
 
 // ============== SCREEN SHAKE ==============
 #define MAX_SCREEN_SHAKE 15
@@ -279,6 +280,85 @@ void drawKillStreakMessage(void (*pixelFunc)(int, int, int, int, int),
     (void)currentTime;
 }
 
+// ============== HIT MARKERS ==============
+#define HIT_MARKER_DURATION 200 // ms
+#define HIT_MARKER_SIZE 10
+
+typedef struct {
+    int active;
+    int startTime;
+    int isCritical;  // For criticals (headshots, etc.)
+} HitMarker;
+
+HitMarker hitMarker = {0, 0, 0};
+
+// Trigger a hit marker (called when damaging an enemy)
+void triggerHitMarker(int currentTime, int isCritical) {
+    hitMarker.active = 1;
+    hitMarker.startTime = currentTime;
+    hitMarker.isCritical = isCritical;
+}
+
+// Draw hit marker (X shape that fades out)
+void drawHitMarker(void (*pixelFunc)(int, int, int, int, int),
+                   int screenWidth, int screenHeight,
+                   int currentTime) {
+    if (!hitMarker.active) return;
+    
+    int elapsed = currentTime - hitMarker.startTime;
+    if (elapsed > HIT_MARKER_DURATION) {
+        hitMarker.active = 0;
+        return;
+    }
+    
+    // Fade out effect
+    float alpha = 1.0f - ((float)elapsed / (float)HIT_MARKER_DURATION);
+    
+    // Color: white for normal, yellow/gold for critical
+    int r, g, b;
+    if (hitMarker.isCritical) {
+        r = (int)(255 * alpha);
+        g = (int)(200 * alpha);
+        b = (int)(50 * alpha);
+    } else {
+        r = (int)(255 * alpha);
+        g = (int)(255 * alpha);
+        b = (int)(255 * alpha);
+    }
+    
+    int centerX = screenWidth / 2;
+    int centerY = screenHeight / 2;
+    int size = HIT_MARKER_SIZE;
+    
+    // Small outward animation at start
+    int offset = (elapsed < 50) ? (elapsed / 10) : 5;
+    
+    // Draw X shape (4 lines from center outward)
+    for (int i = offset; i < size + offset; i++) {
+        // Top-left to bottom-right diagonal
+        int x1 = centerX - i;
+        int y1 = centerY - i;
+        int x2 = centerX + i;
+        int y2 = centerY + i;
+        
+        if (x1 >= 0 && x1 < screenWidth && y1 >= 0 && y1 < screenHeight)
+            pixelFunc(x1, y1, r, g, b);
+        if (x2 >= 0 && x2 < screenWidth && y2 >= 0 && y2 < screenHeight)
+            pixelFunc(x2, y2, r, g, b);
+        
+        // Top-right to bottom-left diagonal
+        x1 = centerX + i;
+        y1 = centerY - i;
+        x2 = centerX - i;
+        y2 = centerY + i;
+        
+        if (x1 >= 0 && x1 < screenWidth && y1 >= 0 && y1 < screenHeight)
+            pixelFunc(x1, y1, r, g, b);
+        if (x2 >= 0 && x2 < screenWidth && y2 >= 0 && y2 < screenHeight)
+            pixelFunc(x2, y2, r, g, b);
+    }
+}
+
 // ============== FLASH EFFECTS ==============
 #define PICKUP_FLASH_DURATION 150
 
@@ -331,6 +411,86 @@ void initEffects(void) {
     initParticles();
     
     flashEffect.flashTime = 0;
+}
+
+// ============== MUZZLE FLASH LIGHTING ==============
+#define MUZZLE_FLASH_DURATION 80 // ms - very brief flash
+
+typedef struct {
+    int active;
+    int lightIndex;  // Index in lighting system
+    int startTime;
+    int r, g, b;     // Light color
+} MuzzleFlashLight;
+
+MuzzleFlashLight muzzleFlashLight = {0, -1, 0, 255, 200, 100};
+
+// Trigger muzzle flash light at player position
+void triggerMuzzleFlashLight(int playerX, int playerY, int playerZ, 
+                              int weaponType, int currentTime) {
+    // Remove old muzzle flash light if still active
+    if (muzzleFlashLight.active && muzzleFlashLight.lightIndex >= 0) {
+        removeLight(muzzleFlashLight.lightIndex);
+    }
+    
+    // Determine light color based on weapon
+    int r = 255, g = 200, b = 100;  // Default warm/yellow
+    int intensity = 255;
+    int radius = 100;
+    
+    switch (weaponType) {
+        case 0: // Fist - very brief red/white flash
+            r = 255; g = 200; b = 180;
+            intensity = 150;
+            radius = 50;
+            break;
+        case 1: // Pistol - bright yellow flash
+            r = 255; g = 230; b = 100;
+            intensity = 220;
+            radius = 80;
+            break;
+        case 2: // Shotgun - intense orange/yellow blast
+            r = 255; g = 180; b = 50;
+            intensity = 255;
+            radius = 150;
+            break;
+        case 3: // Chaingun - rapid yellow flashes
+            r = 255; g = 220; b = 80;
+            intensity = 200;
+            radius = 100;
+            break;
+        case 4: // Plasma - bright cyan flash
+            r = 100; g = 255; b = 255;
+            intensity = 250;
+            radius = 120;
+            break;
+    }
+    
+    // Create the muzzle flash light slightly in front of player
+    int lightIdx = addLight(playerX, playerY, playerZ + 10, 
+                            radius, intensity, r, g, b, 0, 0); // Type 0, no flicker
+    
+    muzzleFlashLight.active = 1;
+    muzzleFlashLight.lightIndex = lightIdx;
+    muzzleFlashLight.startTime = currentTime;
+    muzzleFlashLight.r = r;
+    muzzleFlashLight.g = g;
+    muzzleFlashLight.b = b;
+}
+
+// Update muzzle flash light (remove when expired)
+void updateMuzzleFlashLight(int currentTime) {
+    if (!muzzleFlashLight.active) return;
+    
+    int elapsed = currentTime - muzzleFlashLight.startTime;
+    if (elapsed > MUZZLE_FLASH_DURATION) {
+        // Remove the light
+        if (muzzleFlashLight.lightIndex >= 0) {
+            removeLight(muzzleFlashLight.lightIndex);
+        }
+        muzzleFlashLight.active = 0;
+        muzzleFlashLight.lightIndex = -1;
+    }
 }
 
 #endif // EFFECTS_H

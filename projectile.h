@@ -8,6 +8,7 @@
 #include "textures/cace_fire.h"
 #include "textures/plasma_proj.h"
 #include "enemy.h"
+#include "lighting.h"
 
 // Types handled in data_types.h
 // Constants
@@ -36,6 +37,7 @@ typedef struct {
     int lifeTime; // ms
     int spawnTime;
     int isPlayerProjectile; // 1 if fired by player, 0 if fired by enemy
+    int lightIndex; // Index of dynamic light attached to this projectile (-1 if none)
 } Projectile;
 
 Projectile projectiles[MAX_PROJECTILES];
@@ -105,6 +107,7 @@ void spawnProjectile(float x, float y, float z, float angle, int type, int curre
     projectiles[slot].type = type;
     projectiles[slot].spawnTime = currentTime;
     projectiles[slot].isPlayerProjectile = 0; // Default to enemy projectile
+    projectiles[slot].lightIndex = -1; // No light by default
     
     // printf("DEBUG: Spawning Projectile Type %d at %.2f, %.2f, %.2f (Slot %d)\n", type, x, y, z, slot);
     projectiles[slot].lifeTime = 3000; // 3 seconds default
@@ -139,6 +142,18 @@ void spawnProjectile(float x, float y, float z, float angle, int type, int curre
     else if (type == PROJ_TYPE_BULLET) projectiles[slot].damage = BULLET_DAMAGE;
     else if (type == PROJ_TYPE_SHELL) projectiles[slot].damage = SHELL_DAMAGE;
     else if (type == PROJ_TYPE_FIREBALL) projectiles[slot].damage = FIREBALL_DAMAGE;
+    
+    // Create dynamic light for glowing projectiles
+    if (type == PROJ_TYPE_PLASMA) {
+        // Bright cyan plasma light
+        int lightIdx = addLight((int)x, (int)y, (int)z, 120, 200, 50, 255, 255, 0, 3); // LIGHT_TYPE_POINT=0, FLICKER_PULSE=3
+        projectiles[slot].lightIndex = lightIdx;
+    }
+    else if (type == PROJ_TYPE_FIREBALL) {
+        // Warm orange/red fireball light with flicker
+        int lightIdx = addLight((int)x, (int)y, (int)z, 150, 220, 255, 150, 50, 0, 1); // FLICKER_CANDLE=1
+        projectiles[slot].lightIndex = lightIdx;
+    }
 }
 
 void updateProjectiles(int currentTime) {
@@ -146,6 +161,11 @@ void updateProjectiles(int currentTime) {
         if (!projectiles[i].active) continue;
 
         if (currentTime - projectiles[i].spawnTime > projectiles[i].lifeTime) {
+            // Remove associated light before deactivating
+            if (projectiles[i].lightIndex >= 0) {
+                removeLight(projectiles[i].lightIndex);
+                projectiles[i].lightIndex = -1;
+            }
             projectiles[i].active = 0;
             continue;
         }
@@ -170,6 +190,11 @@ void updateProjectiles(int currentTime) {
         }
 
         if (collided) {
+            // Remove associated light before deactivating
+            if (projectiles[i].lightIndex >= 0) {
+                removeLight(projectiles[i].lightIndex);
+                projectiles[i].lightIndex = -1;
+            }
             projectiles[i].active = 0; // Destroy on wall hit
             continue;
         }
@@ -182,6 +207,11 @@ void updateProjectiles(int currentTime) {
         
         // Assume player radius 8
         if (distToPlayer < 8 + PROJ_RADIUS) {
+            // Remove associated light before deactivating
+            if (projectiles[i].lightIndex >= 0) {
+                removeLight(projectiles[i].lightIndex);
+                projectiles[i].lightIndex = -1;
+            }
             damagePlayer(projectiles[i].damage, currentTime);
             projectiles[i].active = 0;
             continue;
@@ -190,6 +220,13 @@ void updateProjectiles(int currentTime) {
         projectiles[i].x = newX;
         projectiles[i].y = newY;
         projectiles[i].z = newZ;
+        
+        // Update the attached light position to follow the projectile
+        if (projectiles[i].lightIndex >= 0 && projectiles[i].lightIndex < MAX_LIGHTS) {
+            g_lights[projectiles[i].lightIndex].x = (int)newX;
+            g_lights[projectiles[i].lightIndex].y = (int)newY;
+            g_lights[projectiles[i].lightIndex].z = (int)newZ;
+        }
         
         // Enemy Collision (Simple distance check)
         // Only player projectiles hurt enemies
@@ -205,6 +242,11 @@ void updateProjectiles(int currentTime) {
                  float ey = enemies[e].y - newY;
                  // Enemy radius approx 20
                  if (ex*ex + ey*ey < 20*20) {
+                     // Remove associated light before deactivating
+                     if (projectiles[i].lightIndex >= 0) {
+                         removeLight(projectiles[i].lightIndex);
+                         projectiles[i].lightIndex = -1;
+                     }
                      damageEnemy(e, projectiles[i].damage, currentTime);
                      projectiles[i].active = 0;
                      break; 
