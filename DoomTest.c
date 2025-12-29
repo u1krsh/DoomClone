@@ -49,6 +49,9 @@
 // Dynamic lighting system
 #include "lighting.h"
 
+// Gate system
+#include "gates.h"
+
 // Global pause state
 int gamePaused = 0;
 int hasBlueKey = 0; // Inventory flag
@@ -203,6 +206,47 @@ void load()
 		// No lights in file - initialize with default dark ambient
 		initLighting();
 		printf("LIGHTING: No lights found in file\n");
+	}
+
+	// Load gates from level file
+	int num_loaded_gates = 0;
+	if (fscanf(fp, "%i", &num_loaded_gates) != EOF) {
+		initGates();
+		if (num_loaded_gates > MAX_GATES) num_loaded_gates = MAX_GATES;
+		numGates = num_loaded_gates;
+		
+		for (s = 0; s < numGates; s++) {
+			// Format: x y z_closed z_open gate_id trigger_radius texture speed width
+			fscanf(fp, "%i %i %i %i %i %i %i %i %i",
+				&gates[s].x, &gates[s].y,
+				&gates[s].z_closed, &gates[s].z_open,
+				&gates[s].gate_id, &gates[s].trigger_radius,
+				&gates[s].texture, &gates[s].speed, &gates[s].width);
+			gates[s].active = 1;
+			gates[s].state = GATE_STATE_CLOSED;
+			gates[s].z_current = gates[s].z_closed;
+			printf("Loaded gate %d at (%d, %d) ID=%d\n", s, gates[s].x, gates[s].y, gates[s].gate_id);
+		}
+		printf("GATES: Loaded %d gates\n", numGates);
+	} else {
+		initGates();
+	}
+
+	// Load switches from level file
+	int num_loaded_switches = 0;
+	if (fscanf(fp, "%i", &num_loaded_switches) != EOF) {
+		if (num_loaded_switches > MAX_SWITCHES) num_loaded_switches = MAX_SWITCHES;
+		numSwitches = num_loaded_switches;
+		
+		for (s = 0; s < numSwitches; s++) {
+			// Format: x y z linked_gate_id texture
+			fscanf(fp, "%i %i %i %i %i",
+				&switches[s].x, &switches[s].y, &switches[s].z,
+				&switches[s].linked_gate_id, &switches[s].texture);
+			switches[s].active = 1;
+			printf("Loaded switch %d at (%d, %d) -> Gate %d\n", s, switches[s].x, switches[s].y, switches[s].linked_gate_id);
+		}
+		printf("SWITCHES: Loaded %d switches\n", numSwitches);
 	}
 
 	fclose(fp);
@@ -488,10 +532,14 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 	// Store original x1, x2 for texture coordinate calculation before clipping
 	int x1_orig = x1;
 	int x2_orig = x2;
+	
+	// Protect against invalid wall spans that cause division issues
+	int x_span = x2_orig - x1_orig;
+	if (x_span <= 0) { x_span = 1; }
 
-    // Perspective correction preparation
-    float iz1 = 1.0f / d1; // 1/z at left edge
-    float iz2 = 1.0f / d2; // 1/z at right edge
+    // Perspective correction preparation - protect against very small depths causing precision issues
+    float iz1 = (d1 > 0.001f) ? (1.0f / d1) : 1000.0f; // 1/z at left edge
+    float iz2 = (d2 > 0.001f) ? (1.0f / d2) : 1000.0f; // 1/z at right edge
     
     // Get texture width first to calculate max u
     int texWidth = 0, texHeight = 0;
@@ -549,10 +597,10 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 	if (dynamicShade < 0) { dynamicShade = 0; }
 	if (dynamicShade > 90) { dynamicShade = 90; }
 
-	//clipping x
+	//clipping x - use SW-1 to prevent out-of-bounds surf array access
 	if (x1 < 0) { x1 = 0; }
 	if (x2 < 0) { x2 = 0; }
-	if (x1 > SW) { x1 = SW; }
+	if (x1 >= SW) { x1 = SW - 1; }
 	if (x2 > SW) { x2 = SW; }
 
 	//draw x vertices line
@@ -562,7 +610,11 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 
         // Perspective Correct Interpolation
         // Calculate t (0.0 to 1.0) across the ORIGINAL wall span
-        float t_step = (float)(x - x1_orig) / (float)(x2_orig - x1_orig);
+        // Use protected x_span to avoid division by zero
+        float t_step = (float)(x - x1_orig) / (float)x_span;
+        // Clamp t_step to valid range
+        if (t_step < 0.0f) t_step = 0.0f;
+        if (t_step > 1.0f) t_step = 1.0f;
         
         // Interpolate 1/z
         float iz = iz1 + (iz2 - iz1) * t_step;
@@ -570,8 +622,8 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
         // Interpolate u/z
         float uz = uz1 + (uz2 - uz1) * t_step;
         
-        // Recover u
-        float ht = uz / iz;
+        // Recover u - protect against division by zero
+        float ht = (iz > 0.0001f) ? (uz / iz) : 0.0f;
 
 		// Clamp ht to prevent out-of-bounds access
 		if (ht < 0) ht = 0;
@@ -595,10 +647,24 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 		// Loop 1 with negative surface (-1,-2): Draw surfaces using saved Y, then draw wall
 		// Surface 3 (interior): Draw directly in loop 1 without save/draw pattern
 		if (loop == 0) {
-			// Pass 0: Save Y-positions for surface rendering (only for exterior surfaces 1,2)
-			if (S[s].surface == 1) { S[s].surf[x] = y1; continue; } // Save floor boundary
-			if (S[s].surface == 2) { S[s].surf[x] = y2; continue; } // Save ceiling boundary
-			// For surface 3 (interior), don't save - we'll draw directly in loop 1
+			// Pass 0: Save Y-positions for surface rendering
+			// Use min/max tracking for non-convex sector support
+			if (S[s].surface == 1) { 
+				// Floor: use minimum Y (closest wall boundary)
+				if (y1 < S[s].surf[x]) S[s].surf[x] = y1; 
+				continue; 
+			}
+			if (S[s].surface == 2) { 
+				// Ceiling: use maximum Y (closest wall boundary)
+				if (y2 > S[s].surf[x]) S[s].surf[x] = y2; 
+				continue; 
+			}
+			// For surface 3 (interior), save BOTH floor and ceiling boundaries with min/max
+			if (S[s].surface == 3) { 
+				if (y1 < S[s].surf[x]) S[s].surf[x] = y1;   // Floor: take minimum
+				if (y2 > S[s].surf2[x]) S[s].surf2[x] = y2; // Ceiling: take maximum
+				continue; 
+			}
 		}
 		
 		// Calculate view variables for surface rendering
@@ -787,7 +853,29 @@ void draw3D() {
 		depthBuffer[x] = 99999.0f; // Far distance
 	}
 	
-	//order sector by distance
+	// Pre-calculate sector distances for proper sorting
+	for (s = 0; s < numSect; s++) {
+		// Calculate distance to sector center (average of its walls' midpoints)
+		int totalX = 0, totalY = 0, wallCount = 0;
+		for (w = S[s].ws; w < S[s].we; w++) {
+			// Skip degenerate walls
+			if (W[w].x1 == W[w].x2 && W[w].y1 == W[w].y2) continue;
+			totalX += (W[w].x1 + W[w].x2) / 2;
+			totalY += (W[w].y1 + W[w].y2) / 2;
+			wallCount++;
+		}
+		if (wallCount > 0) {
+			int centerX = totalX / wallCount - P.x;
+			int centerY = totalY / wallCount - P.y;
+			// Transform to camera space for accurate depth
+			int camY = (int)(centerX * SN + centerY * CS);
+			S[s].d = (camY > 0) ? camY : 1; // Use camera-space depth
+		} else {
+			S[s].d = 1;
+		}
+	}
+	
+	//order sector by distance (furthest first for painter's algorithm)
 	for (s = 0; s < numSect - 1; s++) {
 		for (w = 0; w < numSect - s - 1; w++) {
 			if (S[w].d < S[w + 1].d) {
@@ -924,6 +1012,11 @@ void draw3D() {
 		// Two-pass loop: loop 0 = save Y positions (with swapped vertices), loop 1 = draw surfaces
 		for (int loop = 0; loop < 2; loop++) {
 			for (w = S[s].ws; w < S[s].we; w++) {
+				// Skip degenerate walls (zero-length walls with identical start/end points)
+				if (W[w].x1 == W[w].x2 && W[w].y1 == W[w].y2) {
+					continue;
+				}
+				
 				int x1 = W[w].x1 - P.x, y1 = W[w].y1 - P.y;
 				int x2 = W[w].x2 - P.x, y2 = W[w].y2 - P.y;
 
@@ -970,11 +1063,31 @@ void draw3D() {
 				float depth0 = wy[0];
 				float depth1 = wy[1];
 
+				// Project to screen coordinates with overflow protection
+				// Ensure minimum depth to prevent extreme projection values
+				int minDepth = 1;
+				if (wy[0] < minDepth) wy[0] = minDepth;
+				if (wy[1] < minDepth) wy[1] = minDepth;
+				if (wy[2] < minDepth) wy[2] = minDepth;
+				if (wy[3] < minDepth) wy[3] = minDepth;
+				
 				wx[0] = wx[0] * 200 / wy[0] + HSW;
 				wy[0] = wz[0] * 200 / wy[0] + HSH;
 				wx[1] = wx[1] * 200 / wy[1] + HSW; wy[1] = wz[1] * 200 / wy[1] + HSH;
 				wx[2] = wx[2] * 200 / wy[2] + HSW; wy[2] = wz[2] * 200 / wy[2] + HSH;
 				wx[3] = wx[3] * 200 / wy[3] + HSW; wy[3] = wz[3] * 200 / wy[3] + HSH;
+				
+				// Clamp to reasonable screen bounds to prevent overflow issues
+				int maxX = SW * 4;  // Allow some overdraw for proper clipping
+				int maxY = SH * 4;
+				if (wx[0] < -maxX) wx[0] = -maxX; if (wx[0] > maxX) wx[0] = maxX;
+				if (wx[1] < -maxX) wx[1] = -maxX; if (wx[1] > maxX) wx[1] = maxX;
+				if (wx[2] < -maxX) wx[2] = -maxX; if (wx[2] > maxX) wx[2] = maxX;
+				if (wx[3] < -maxX) wx[3] = -maxX; if (wx[3] > maxX) wx[3] = maxX;
+				if (wy[0] < -maxY) wy[0] = -maxY; if (wy[0] > maxY) wy[0] = maxY;
+				if (wy[1] < -maxY) wy[1] = -maxY; if (wy[1] > maxY) wy[1] = maxY;
+				if (wy[2] < -maxY) wy[2] = -maxY; if (wy[2] > maxY) wy[2] = maxY;
+				if (wy[3] < -maxY) wy[3] = -maxY; if (wy[3] > maxY) wy[3] = maxY;
 
 				// Update depth buffer for this wall segment
 				int startX = wx[0] < wx[1] ? wx[0] : wx[1];
@@ -1012,6 +1125,9 @@ void draw3D() {
 	
 	// Draw enemies as sprites (after walls and debug wireframes)
 	drawEnemies();
+	
+	// Draw gates (after enemies, so they render on top when in front)
+	drawGates(P.x, P.y, P.z, P.a, M.cos[P.a], M.sin[P.a], NULL, 0);
 
 	// Draw projectiles (after enemies)
 	drawProjectiles();
@@ -1241,9 +1357,9 @@ void drawEnemies() {
 			for (x = startX; x < endX; x++) {
 				if (x < 0 || x >= SW) continue;
 				
-				// Depth test - with bias to prevent wall clipping
-				// Allow enemy to be slightly "inside" the wall (20 units bias)
-				if (camY > depthBuffer[x] + 20) continue;
+				// Depth test - strict comparison to prevent wall clipping
+				// Small bias (2 units) only to handle edge cases at wall boundaries
+				if (camY > depthBuffer[x] + 2) continue;
 				
 				// Calculate texture coordinates
 				float u = (float)(x - startX) / (float)spriteWidth;
@@ -1563,6 +1679,9 @@ void display() {
 					// Update projectiles
 					updateProjectiles(T.fr1);
 					
+					// Update gates (animation)
+					updateGates(T.fr1);
+					
 					// Handle weapon firing
 					// Auto-fire for Chaingun and Plasma
 					int isAutoFire = (weapon.currentWeapon == WEAPON_CHAINGUN || weapon.currentWeapon == WEAPON_PLASMA);
@@ -1785,12 +1904,14 @@ void KeysDown(unsigned char key, int x, int y)
 	if (key == '4') { selectWeapon(WEAPON_PLASMA); }
 	if (key == '5') { selectWeapon(WEAPON_CHAINGUN); }
 	
-	// Weapon switching with Q/E
+	// Weapon switching with Q (previous weapon only, E is now for use/interact)
 	if (key == 'q') { prevWeapon(); }
-	if (key == 'e') { nextWeapon(); }
 	
 	// Toggle HUD with H
 	if (key == 'h') { toggleHUD(); }
+	
+	// Use/Interact with E key (gates and switches) - standard FPS interaction key
+	if (key == 'e') { tryUseNearby(P.x, P.y, T.fr1); }
 	
 	if (key == 13) { 
 		load(); // Reload level

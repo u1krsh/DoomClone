@@ -25,7 +25,7 @@ void spawnProjectile(float x, float y, float z, float angle, int type, int curre
 #define ENEMY_DETECTION_RADIUS 500  // Distance at which enemy starts following player
 #define ENEMY_ATTACK_RADIUS 250      // Distance at which enemy attacks
 #define ENEMY_SPEED 2               // Movement speed of enemies
-#define ENEMY_COLLISION_RADIUS 10   // Collision radius for enemies
+#define ENEMY_COLLISION_RADIUS 25   // Collision radius for enemies
 
 // Animation constants
 #define ENEMY_ANIM_SPEED 150        // Milliseconds per frame
@@ -52,6 +52,20 @@ void spawnProjectile(float x, float y, float z, float angle, int type, int curre
 #define ENEMY_STATE_HURT 3
 #define ENEMY_STATE_DYING 4
 #define ENEMY_STATE_DEAD 5
+#define ENEMY_STATE_FLANKING 6
+#define ENEMY_STATE_RETREATING 7
+#define ENEMY_STATE_STRAFING 8
+#define ENEMY_STATE_ALERT 9
+
+// Advanced AI Parameters
+#define ENEMY_STRAFE_SPEED 1.5f       // Speed multiplier when strafing
+#define ENEMY_RETREAT_HEALTH_PCT 30   // Health % to start retreating
+#define ENEMY_STRAFE_DURATION 400     // ms to strafe in one direction
+#define ENEMY_FLANK_CHANCE 25         // % chance to try flanking per second
+#define ENEMY_PACK_ALERT_RADIUS 400   // Radius to alert other enemies
+#define ENEMY_PREDICTION_FACTOR 0.4f  // How much to lead shots (0-1)
+#define ENEMY_SIGHT_CHECK_INTERVAL 200 // ms between LOS checks
+#define ENEMY_BEHAVIOR_UPDATE_INTERVAL 100 // ms between behavior changes
 
 // Enemy health by type
 #define BOSSA1_HEALTH 100
@@ -92,7 +106,22 @@ typedef struct {
 	int damage;         // Damage dealt by this enemy
 	float trueZ;        // Precise Z position for smooth movement
 	float driftPhase;   // Random phase for organic floating
+	
+	// Advanced AI fields
+	int strafeDir;          // -1 = left, +1 = right, 0 = none
+	int strafeEndTime;      // When to switch strafe direction
+	int lastKnownPlayerX;   // Last seen player X position
+	int lastKnownPlayerY;   // Last seen player Y position
+	int lastSeenPlayerTime; // When player was last visible
+	int canSeePlayer;       // Current visibility status
+	int lastSightCheck;     // Last time LOS was checked
+	int lastBehaviorTime;   // Last time behavior was updated
+	int tacticalState;      // Sub-state for complex maneuvers
+	float flankAngle;       // Offset angle for flanking movement
+	int alerted;            // Has been alerted by another enemy
+	int alertTime;          // When this enemy was alerted
 } Enemy;
+
 
 // Global enemy array
 Enemy enemies[MAX_ENEMIES];
@@ -138,6 +167,19 @@ void initEnemies() {
 		enemies[i].lastAttackTime = 0;
 		enemies[i].stateStartTime = 0;
 		enemies[i].damage = BOSSA1_DAMAGE;
+		// Initialize advanced AI fields
+		enemies[i].strafeDir = 0;
+		enemies[i].strafeEndTime = 0;
+		enemies[i].lastKnownPlayerX = 0;
+		enemies[i].lastKnownPlayerY = 0;
+		enemies[i].lastSeenPlayerTime = 0;
+		enemies[i].canSeePlayer = 0;
+		enemies[i].lastSightCheck = 0;
+		enemies[i].lastBehaviorTime = 0;
+		enemies[i].tacticalState = 0;
+		enemies[i].flankAngle = 0.0f;
+		enemies[i].alerted = 0;
+		enemies[i].alertTime = 0;
 	}
 	numEnemies = 0;
 	enemiesKilled = 0;
@@ -171,6 +213,19 @@ void addEnemyType(int x, int y, int z, int enemyType) {
 	enemies[numEnemies].lastAttackTime = 0;
 	enemies[numEnemies].stateStartTime = 0;
 	enemies[numEnemies].damage = getEnemyDamageByType(enemyType);
+	// Initialize advanced AI fields
+	enemies[numEnemies].strafeDir = (rand() % 2) * 2 - 1; // Random -1 or +1
+	enemies[numEnemies].strafeEndTime = 0;
+	enemies[numEnemies].lastKnownPlayerX = 0;
+	enemies[numEnemies].lastKnownPlayerY = 0;
+	enemies[numEnemies].lastSeenPlayerTime = 0;
+	enemies[numEnemies].canSeePlayer = 0;
+	enemies[numEnemies].lastSightCheck = 0;
+	enemies[numEnemies].lastBehaviorTime = 0;
+	enemies[numEnemies].tacticalState = 0;
+	enemies[numEnemies].flankAngle = ((float)(rand() % 60) - 30.0f) * 0.0174533f; // -30 to +30 degrees in radians
+	enemies[numEnemies].alerted = 0;
+	enemies[numEnemies].alertTime = 0;
 	numEnemies++;
 	totalEnemiesSpawned++;
 }
@@ -293,6 +348,323 @@ void addArmor(int amount) {
 	if (playerArmor > playerMaxArmor) playerArmor = playerMaxArmor;
 }
 
+// ============================================
+// ADVANCED AI HELPER FUNCTIONS
+// ============================================
+
+// Forward declarations for wall data access
+extern walls W[];
+extern int numWall;
+
+// Line segment intersection test
+// Returns 1 if line AB intersects line CD
+int lineIntersectsLine(float ax, float ay, float bx, float by, 
+                       float cx, float cy, float dx, float dy) {
+	float denominator = ((bx - ax) * (dy - cy)) - ((by - ay) * (dx - cx));
+	if (denominator == 0) return 0; // Parallel lines
+	
+	float t = (((cx - ax) * (dy - cy)) - ((cy - ay) * (dx - cx))) / denominator;
+	float u = (((cx - ax) * (by - ay)) - ((cy - ay) * (bx - ax))) / denominator;
+	
+	return (t >= 0 && t <= 1 && u >= 0 && u <= 1);
+}
+
+// Check if enemy has line of sight to player
+// Uses simple raycast against walls
+int enemyCanSeePlayer(int enemyIndex, int playerX, int playerY) {
+	if (enemyIndex < 0 || enemyIndex >= numEnemies) return 0;
+	
+	float ex = (float)enemies[enemyIndex].x;
+	float ey = (float)enemies[enemyIndex].y;
+	float px = (float)playerX;
+	float py = (float)playerY;
+	
+	// Check intersection with each wall
+	for (int w = 0; w < numWall; w++) {
+		float wx1 = (float)W[w].x1;
+		float wy1 = (float)W[w].y1;
+		float wx2 = (float)W[w].x2;
+		float wy2 = (float)W[w].y2;
+		
+		if (lineIntersectsLine(ex, ey, px, py, wx1, wy1, wx2, wy2)) {
+			return 0; // Wall blocks view
+		}
+	}
+	
+	return 1; // No walls blocking
+}
+
+// Alert nearby enemies to player position (pack behavior)
+void alertNearbyEnemies(int alerterIndex, int playerX, int playerY, int currentTime) {
+	if (alerterIndex < 0 || alerterIndex >= numEnemies) return;
+	
+	int alerterX = enemies[alerterIndex].x;
+	int alerterY = enemies[alerterIndex].y;
+	
+	for (int i = 0; i < numEnemies; i++) {
+		if (i == alerterIndex) continue;
+		if (!enemies[i].active) continue;
+		if (enemies[i].state == ENEMY_STATE_DEAD || enemies[i].state == ENEMY_STATE_DYING) continue;
+		
+		// Check distance to alerter
+		int dx = enemies[i].x - alerterX;
+		int dy = enemies[i].y - alerterY;
+		int distSq = dx * dx + dy * dy;
+		
+		if (distSq < ENEMY_PACK_ALERT_RADIUS * ENEMY_PACK_ALERT_RADIUS) {
+			// Alert this enemy
+			if (!enemies[i].alerted || enemies[i].state == ENEMY_STATE_IDLE) {
+				enemies[i].alerted = 1;
+				enemies[i].alertTime = currentTime;
+				enemies[i].lastKnownPlayerX = playerX;
+				enemies[i].lastKnownPlayerY = playerY;
+				
+				// If idle, switch to alert state
+				if (enemies[i].state == ENEMY_STATE_IDLE) {
+					enemies[i].state = ENEMY_STATE_ALERT;
+					enemies[i].stateStartTime = currentTime;
+				}
+			}
+		}
+	}
+}
+
+// Predict where player will be based on movement (for leading shots)
+void predictPlayerPosition(int enemyX, int enemyY, int playerX, int playerY, 
+                          int lastPlayerX, int lastPlayerY, float predictionFactor,
+                          int* targetX, int* targetY) {
+	// Calculate player velocity
+	int velX = playerX - lastPlayerX;
+	int velY = playerY - lastPlayerY;
+	
+	// Calculate distance to enemy
+	int dx = enemyX - playerX;
+	int dy = enemyY - playerY;
+	float dist = sqrt(dx * dx + dy * dy);
+	
+	// Predict based on distance and velocity
+	// Further enemies need more prediction
+	float predictionScale = predictionFactor * (dist / 200.0f);
+	if (predictionScale > 1.5f) predictionScale = 1.5f;
+	
+	*targetX = playerX + (int)(velX * predictionScale * 10.0f);
+	*targetY = playerY + (int)(velY * predictionScale * 10.0f);
+}
+
+// Calculate distance from point to line segment
+float pointToSegmentDist(float px, float py, float x1, float y1, float x2, float y2) {
+	float dx = x2 - x1;
+	float dy = y2 - y1;
+	float lenSq = dx * dx + dy * dy;
+	
+	if (lenSq < 0.001f) {
+		// Degenerate segment - just return distance to point
+		float dpx = px - x1;
+		float dpy = py - y1;
+		return sqrt(dpx * dpx + dpy * dpy);
+	}
+	
+	// Calculate projection parameter
+	float t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+	
+	// Clamp to segment
+	if (t < 0.0f) t = 0.0f;
+	if (t > 1.0f) t = 1.0f;
+	
+	// Closest point on segment
+	float closestX = x1 + t * dx;
+	float closestY = y1 + t * dy;
+	
+	// Distance from point to closest point
+	float distX = px - closestX;
+	float distY = py - closestY;
+	
+	return sqrt(distX * distX + distY * distY);
+}
+
+// Check if enemy at position collides with any wall (using collision radius)
+// Returns 1 if position is too close to a wall, 0 if clear
+int enemyPositionCollidesWithWall(int posX, int posY) {
+	float px = (float)posX;
+	float py = (float)posY;
+	float collisionDist = (float)ENEMY_COLLISION_RADIUS;
+	
+	// Check distance to all walls
+	for (int w = 0; w < numWall; w++) {
+		// Skip degenerate walls (zero-length)
+		if (W[w].x1 == W[w].x2 && W[w].y1 == W[w].y2) continue;
+		
+		float wx1 = (float)W[w].x1;
+		float wy1 = (float)W[w].y1;
+		float wx2 = (float)W[w].x2;
+		float wy2 = (float)W[w].y2;
+		
+		// Check distance from enemy position to wall segment
+		float dist = pointToSegmentDist(px, py, wx1, wy1, wx2, wy2);
+		
+		if (dist < collisionDist) {
+			return 1; // Too close to wall
+		}
+	}
+	
+	return 0; // Position is clear
+}
+
+// Check if enemy movement collides with walls (path OR destination)
+// Returns 1 if path is blocked, 0 if clear
+// Uses multiple sample points along the path for more robust collision detection
+int enemyCollidesWithWall(int fromX, int fromY, int toX, int toY) {
+	float fx = (float)fromX;
+	float fy = (float)fromY;
+	float tx = (float)toX;
+	float ty = (float)toY;
+	
+	// Calculate path length and number of samples
+	float dx = tx - fx;
+	float dy = ty - fy;
+	float pathLen = sqrt(dx * dx + dy * dy);
+	
+	// Sample every 5 units along the path, minimum 2 samples (start and end)
+	int numSamples = (int)(pathLen / 5.0f) + 2;
+	if (numSamples > 10) numSamples = 10; // Cap samples for performance
+	
+	// Check each sample point along the path
+	for (int s = 0; s <= numSamples; s++) {
+		float t = (float)s / (float)numSamples;
+		int sampleX = (int)(fx + dx * t);
+		int sampleY = (int)(fy + dy * t);
+		
+		if (enemyPositionCollidesWithWall(sampleX, sampleY)) {
+			return 1; // Too close to wall at this sample point
+		}
+	}
+	
+	// Also check for actual line intersection with walls
+	for (int w = 0; w < numWall; w++) {
+		if (W[w].x1 == W[w].x2 && W[w].y1 == W[w].y2) continue;
+		
+		float wx1 = (float)W[w].x1;
+		float wy1 = (float)W[w].y1;
+		float wx2 = (float)W[w].x2;
+		float wy2 = (float)W[w].y2;
+		
+		if (lineIntersectsLine(fx, fy, tx, ty, wx1, wy1, wx2, wy2)) {
+			return 1; // Path crosses wall
+		}
+	}
+	
+	return 0; // No collision
+}
+
+// Push enemy away from nearest wall if too close
+// This prevents enemies from getting stuck inside walls
+void pushEnemyAwayFromWalls(int enemyIndex) {
+	if (enemyIndex < 0 || enemyIndex >= numEnemies) return;
+	
+	float px = (float)enemies[enemyIndex].x;
+	float py = (float)enemies[enemyIndex].y;
+	float pushDist = (float)ENEMY_COLLISION_RADIUS + 2.0f;
+	
+	for (int w = 0; w < numWall; w++) {
+		// Skip degenerate walls
+		if (W[w].x1 == W[w].x2 && W[w].y1 == W[w].y2) continue;
+		
+		float wx1 = (float)W[w].x1;
+		float wy1 = (float)W[w].y1;
+		float wx2 = (float)W[w].x2;
+		float wy2 = (float)W[w].y2;
+		
+		float dist = pointToSegmentDist(px, py, wx1, wy1, wx2, wy2);
+		
+		if (dist < pushDist && dist > 0.01f) {
+			// Calculate wall direction
+			float wdx = wx2 - wx1;
+			float wdy = wy2 - wy1;
+			float wLen = sqrt(wdx * wdx + wdy * wdy);
+			if (wLen < 0.01f) continue;
+			
+			// Calculate wall normal (perpendicular)
+			float nx = -wdy / wLen;
+			float ny = wdx / wLen;
+			
+			// Determine which side enemy is on by checking dot product
+			float toEnemyX = px - wx1;
+			float toEnemyY = py - wy1;
+			float dot = toEnemyX * nx + toEnemyY * ny;
+			
+			// Push in the direction away from wall
+			float pushAmount = (pushDist - dist) * 0.5f;
+			if (dot < 0) {
+				nx = -nx;
+				ny = -ny;
+			}
+			
+			enemies[enemyIndex].x += (int)(nx * pushAmount);
+			enemies[enemyIndex].y += (int)(ny * pushAmount);
+			
+			// Update px, py for subsequent wall checks
+			px = (float)enemies[enemyIndex].x;
+			py = (float)enemies[enemyIndex].y;
+		}
+	}
+}
+
+// Move enemy with wall collision detection
+// Returns 1 if movement was successful (at least partially), 0 if fully blocked
+int moveEnemyWithCollision(int enemyIndex, int moveX, int moveY) {
+	if (enemyIndex < 0 || enemyIndex >= numEnemies) return 0;
+	
+	int oldX = enemies[enemyIndex].x;
+	int oldY = enemies[enemyIndex].y;
+	int newX = oldX + moveX;
+	int newY = oldY + moveY;
+	
+	// First, push enemy away from walls if currently too close (fixes stuck enemies)
+	pushEnemyAwayFromWalls(enemyIndex);
+	
+	// Update positions after push
+	oldX = enemies[enemyIndex].x;
+	oldY = enemies[enemyIndex].y;
+	newX = oldX + moveX;
+	newY = oldY + moveY;
+	
+	// Try full movement first
+	if (!enemyCollidesWithWall(oldX, oldY, newX, newY)) {
+		enemies[enemyIndex].x = newX;
+		enemies[enemyIndex].y = newY;
+		return 1;
+	}
+	
+	// Try X movement only (slide along wall)
+	if (moveX != 0 && !enemyCollidesWithWall(oldX, oldY, newX, oldY)) {
+		enemies[enemyIndex].x = newX;
+		return 1;
+	}
+	
+	// Try Y movement only (slide along wall)
+	if (moveY != 0 && !enemyCollidesWithWall(oldX, oldY, oldX, newY)) {
+		enemies[enemyIndex].y = newY;
+		return 1;
+	}
+	
+	// Try reduced movement (half step)
+	int halfMoveX = moveX / 2;
+	int halfMoveY = moveY / 2;
+	if ((halfMoveX != 0 || halfMoveY != 0) && 
+	    !enemyCollidesWithWall(oldX, oldY, oldX + halfMoveX, oldY + halfMoveY)) {
+		enemies[enemyIndex].x = oldX + halfMoveX;
+		enemies[enemyIndex].y = oldY + halfMoveY;
+		return 1;
+	}
+	
+	// Fully blocked
+	return 0;
+}
+
+// Track player position for velocity calculation
+static int prevPlayerX = 0;
+static int prevPlayerY = 0;
+
 // Update all enemies
 void updateEnemies(int playerX, int playerY, int playerZ, int currentTime) {
 	if (!enemiesEnabled) return;
@@ -321,7 +693,8 @@ void updateEnemies(int playerX, int playerY, int playerZ, int currentTime) {
 			int dieFrames = BOSSA1_DIE_FRAME_COUNT; // Default to BOSSA1
 			if (enemies[i].enemyType == ENEMY_TYPE_BOSSA1) dieFrames = BOSSA1_DIE_FRAME_COUNT;
 			else if (enemies[i].enemyType == ENEMY_TYPE_BOSSA2) dieFrames = BOSSA2_DIE_FRAME_COUNT;
-			else if (enemies[i].enemyType == ENEMY_TYPE_BOSSA3) dieFrames = BOSSA3_DIE_FRAME_COUNT; // Added this line
+			else if (enemies[i].enemyType == ENEMY_TYPE_BOSSA3) dieFrames = BOSSA3_DIE_FRAME_COUNT;
+			else if (enemies[i].enemyType == ENEMY_TYPE_CACE) dieFrames = CACE_DIE_FRAME_COUNT;
 			
 			// Update Z to keep on ground (user requested slightly lower)
 			enemies[i].z = -3;
@@ -333,10 +706,7 @@ void updateEnemies(int playerX, int playerY, int playerZ, int currentTime) {
 				if (enemies[i].animFrame >= dieFrames) {
 					enemies[i].state = ENEMY_STATE_DEAD;
 					enemies[i].animFrame = dieFrames - 1; // Keep last frame
-					// Keep active = 1 so it draws
 					enemiesKilled++;
-					
-					// Set final Z
 					enemies[i].z = -3;
 				}
 			}
@@ -344,7 +714,6 @@ void updateEnemies(int playerX, int playerY, int playerZ, int currentTime) {
 		}
 		
 		if (enemies[i].state == ENEMY_STATE_DEAD) {
-			// Ensure it stays on the ground
 			enemies[i].z = -3;
 			continue;
 		}
@@ -354,82 +723,265 @@ void updateEnemies(int playerX, int playerY, int playerZ, int currentTime) {
 			if (currentTime - enemies[i].stateStartTime >= ENEMY_HURT_DURATION) {
 				enemies[i].state = ENEMY_STATE_CHASING;
 			}
-			// Don't continue - let the enemy keep moving while hurt
+		}
+		
+		// ============================================
+		// ADVANCED AI: Line of Sight Check
+		// ============================================
+		if (currentTime - enemies[i].lastSightCheck >= ENEMY_SIGHT_CHECK_INTERVAL) {
+			enemies[i].canSeePlayer = enemyCanSeePlayer(i, playerX, playerY);
+			enemies[i].lastSightCheck = currentTime;
+			
+			// If we can see the player, update last known position and alert others
+			if (enemies[i].canSeePlayer) {
+				enemies[i].lastKnownPlayerX = playerX;
+				enemies[i].lastKnownPlayerY = playerY;
+				enemies[i].lastSeenPlayerTime = currentTime;
+				
+				// Alert nearby enemies (pack behavior)
+				if (enemies[i].state == ENEMY_STATE_IDLE || !enemies[i].alerted) {
+					alertNearbyEnemies(i, playerX, playerY, currentTime);
+				}
+			}
 		}
 		
 		// Calculate distance to player
 		int dist = enemyDist(enemies[i].x, enemies[i].y, playerX, playerY);
 		
-		if (dist < ENEMY_ATTACK_RADIUS) {
-			// Attack player (only if not hurt)
-			if (enemies[i].state != ENEMY_STATE_HURT) {
-				enemies[i].state = ENEMY_STATE_ATTACKING;
-				
+		// ============================================
+		// ADVANCED AI: Health-based Behavior
+		// ============================================
+		float healthPercent = (float)enemies[i].health / (float)enemies[i].maxHealth * 100.0f;
+		int shouldRetreat = (healthPercent < ENEMY_RETREAT_HEALTH_PCT && dist < ENEMY_ATTACK_RADIUS * 2);
+		
+		// ============================================
+		// ADVANCED AI: Tactical State Decisions
+		// ============================================
+		if (currentTime - enemies[i].lastBehaviorTime >= ENEMY_BEHAVIOR_UPDATE_INTERVAL) {
+			enemies[i].lastBehaviorTime = currentTime;
+			
+			// Decide on tactical behavior
+			if (shouldRetreat && enemies[i].state != ENEMY_STATE_HURT) {
+				// Low health - retreat while shooting
+				enemies[i].state = ENEMY_STATE_RETREATING;
+				enemies[i].stateStartTime = currentTime;
+			}
+			else if (dist < ENEMY_ATTACK_RADIUS && enemies[i].canSeePlayer) {
+				// In attack range with LOS - attack with strafing
+				if (enemies[i].state != ENEMY_STATE_HURT) {
+					// Randomly decide to strafe or attack directly
+					if (rand() % 100 < 60) {
+						enemies[i].state = ENEMY_STATE_STRAFING;
+					} else {
+						enemies[i].state = ENEMY_STATE_ATTACKING;
+					}
+				}
+			}
+			else if (dist < ENEMY_DETECTION_RADIUS && enemies[i].canSeePlayer) {
+				// Can see player, in detection range
+				if (enemies[i].state != ENEMY_STATE_HURT) {
+					// Decide to flank or chase directly
+					if (rand() % 100 < ENEMY_FLANK_CHANCE && dist > ENEMY_ATTACK_RADIUS) {
+						enemies[i].state = ENEMY_STATE_FLANKING;
+						enemies[i].flankAngle = ((rand() % 2) * 2 - 1) * (0.5f + (rand() % 50) / 100.0f);
+					} else {
+						enemies[i].state = ENEMY_STATE_CHASING;
+					}
+				}
+			}
+			else if (enemies[i].alerted && currentTime - enemies[i].alertTime < 5000) {
+				// Was alerted by another enemy - move to last known position
+				enemies[i].state = ENEMY_STATE_ALERT;
+			}
+			else if (dist >= ENEMY_DETECTION_RADIUS && !enemies[i].alerted) {
+				// Out of range and not alerted
+				if (enemies[i].state != ENEMY_STATE_HURT) {
+					enemies[i].state = ENEMY_STATE_IDLE;
+					enemies[i].animFrame = 0;
+				}
+			}
+		}
+		
+		// ============================================
+		// ADVANCED AI: Strafe Direction Updates
+		// ============================================
+		if (currentTime >= enemies[i].strafeEndTime) {
+			// Time to change strafe direction
+			enemies[i].strafeDir = (rand() % 2) * 2 - 1; // -1 or +1
+			enemies[i].strafeEndTime = currentTime + ENEMY_STRAFE_DURATION + (rand() % 300);
+		}
+		
+		// ============================================
+		// STATE-SPECIFIC BEHAVIOR
+		// ============================================
+		int dx = playerX - enemies[i].x;
+		int dy = playerY - enemies[i].y;
+		float angleToPlayer = atan2((float)dx, (float)dy);
+		
+		switch (enemies[i].state) {
+			case ENEMY_STATE_ATTACKING:
+			case ENEMY_STATE_STRAFING: {
 				// Update attack animation
 				int frameCount = 0;
 				if (enemies[i].enemyType == ENEMY_TYPE_BOSSA1) frameCount = BOSSA1_ATTACK_FRAME_COUNT;
 				else if (enemies[i].enemyType == ENEMY_TYPE_BOSSA2) frameCount = BOSSA2_ATTACK_FRAME_COUNT;
-				else frameCount = BOSSA3_ATTACK_FRAME_COUNT;
+				else if (enemies[i].enemyType == ENEMY_TYPE_BOSSA3) frameCount = BOSSA3_ATTACK_FRAME_COUNT;
+				else if (enemies[i].enemyType == ENEMY_TYPE_CACE) frameCount = CACE_ATTACK_FRAME_COUNT;
+				else frameCount = 3;
 				
 				if (currentTime - enemies[i].lastAnimTime >= ENEMY_ANIM_SPEED) {
 					enemies[i].animFrame = (enemies[i].animFrame + 1) % frameCount;
 					enemies[i].lastAnimTime = currentTime;
 				}
-			}
-			
-			// Check attack cooldown
-			if (currentTime - enemies[i].lastAttackTime >= ENEMY_ATTACK_COOLDOWN) {
-				// Spawn projectile based on enemy type
-				float angle = atan2((float)(playerX - enemies[i].x), (float)(playerY - enemies[i].y));
-				int projType = PROJ_TYPE_PLASMA;
-				if (enemies[i].enemyType == ENEMY_TYPE_BOSSA2) projType = PROJ_TYPE_BULLET;
-				else if (enemies[i].enemyType == ENEMY_TYPE_BOSSA3) projType = PROJ_TYPE_SHELL;
-				else if (enemies[i].enemyType == ENEMY_TYPE_CACE) projType = PROJ_TYPE_FIREBALL;
 				
-				spawnProjectile((float)enemies[i].x, (float)enemies[i].y, (float)enemies[i].z + 15, angle, projType, currentTime);
-
-				enemies[i].lastAttackTime = currentTime;
-			}
-		}
-		else if (dist < ENEMY_DETECTION_RADIUS) {
-			// Chase player (only update state if not hurt)
-			if (enemies[i].state != ENEMY_STATE_HURT) {
-				enemies[i].state = ENEMY_STATE_CHASING;
+				// STRAFING: Move sideways while attacking
+				if (enemies[i].state == ENEMY_STATE_STRAFING) {
+					float strafeAngle = angleToPlayer + (3.14159f / 2.0f) * enemies[i].strafeDir;
+					int moveX = (int)(sin(strafeAngle) * ENEMY_SPEED * ENEMY_STRAFE_SPEED);
+					int moveY = (int)(cos(strafeAngle) * ENEMY_SPEED * ENEMY_STRAFE_SPEED);
+					moveEnemyWithCollision(i, moveX, moveY);
+				}
+				
+				// Check attack cooldown - shoot with prediction
+				if (currentTime - enemies[i].lastAttackTime >= ENEMY_ATTACK_COOLDOWN) {
+					// Predict player position for leading shots
+					int targetX, targetY;
+					predictPlayerPosition(enemies[i].x, enemies[i].y, playerX, playerY,
+					                      prevPlayerX, prevPlayerY, ENEMY_PREDICTION_FACTOR,
+					                      &targetX, &targetY);
+					
+					float aimAngle = atan2((float)(targetX - enemies[i].x), (float)(targetY - enemies[i].y));
+					
+					int projType = PROJ_TYPE_PLASMA;
+					if (enemies[i].enemyType == ENEMY_TYPE_BOSSA2) projType = PROJ_TYPE_BULLET;
+					else if (enemies[i].enemyType == ENEMY_TYPE_BOSSA3) projType = PROJ_TYPE_SHELL;
+					else if (enemies[i].enemyType == ENEMY_TYPE_CACE) projType = PROJ_TYPE_FIREBALL;
+					
+					spawnProjectile((float)enemies[i].x, (float)enemies[i].y, (float)enemies[i].z + 15, aimAngle, projType, currentTime);
+					enemies[i].lastAttackTime = currentTime;
+				}
+				break;
 			}
 			
-			// Calculate direction to player
-			int dx = playerX - enemies[i].x;
-			int dy = playerY - enemies[i].y;
-			float angle = atan2(dx, dy);
-			
-			// Move towards player (even when hurt!)
-			if (dist > ENEMY_COLLISION_RADIUS) {
-				enemies[i].x += (int)(sin(angle) * ENEMY_SPEED);
-				enemies[i].y += (int)(cos(angle) * ENEMY_SPEED);
+			case ENEMY_STATE_CHASING: {
+				// Move directly towards player with wall collision
+				if (dist > ENEMY_COLLISION_RADIUS) {
+					int moveX = (int)(sin(angleToPlayer) * ENEMY_SPEED);
+					int moveY = (int)(cos(angleToPlayer) * ENEMY_SPEED);
+					moveEnemyWithCollision(i, moveX, moveY);
+				}
+				
+				// Update walk animation
+				int frameCount = getEnemyFrameCount(enemies[i].enemyType);
+				if (frameCount > 1 && currentTime - enemies[i].lastAnimTime >= ENEMY_ANIM_SPEED) {
+					enemies[i].animFrame = (enemies[i].animFrame + 1) % frameCount;
+					enemies[i].lastAnimTime = currentTime;
+				}
+				break;
 			}
 			
-			// Keep enemy at same height as player (same plane) - EXCEPT Cacodemon
-			if (enemies[i].enemyType != ENEMY_TYPE_CACE) {
-				enemies[i].z = playerZ;
+			case ENEMY_STATE_FLANKING: {
+				// Move at an angle to the player (flanking maneuver) with wall collision
+				float flankMoveAngle = angleToPlayer + enemies[i].flankAngle;
+				if (dist > ENEMY_COLLISION_RADIUS) {
+					int moveX = (int)(sin(flankMoveAngle) * ENEMY_SPEED * 1.2f);
+					int moveY = (int)(cos(flankMoveAngle) * ENEMY_SPEED * 1.2f);
+					moveEnemyWithCollision(i, moveX, moveY);
+				}
+				
+				// If close enough, switch to attacking
+				if (dist < ENEMY_ATTACK_RADIUS) {
+					enemies[i].state = ENEMY_STATE_STRAFING;
+				}
+				
+				// Update walk animation
+				int frameCount = getEnemyFrameCount(enemies[i].enemyType);
+				if (frameCount > 1 && currentTime - enemies[i].lastAnimTime >= ENEMY_ANIM_SPEED) {
+					enemies[i].animFrame = (enemies[i].animFrame + 1) % frameCount;
+					enemies[i].lastAnimTime = currentTime;
+				}
+				break;
 			}
 			
-			// Update animation frame when moving (only if we have more than 1 frame)
-			int frameCount = getEnemyFrameCount(enemies[i].enemyType);
-			if (frameCount > 1) {
+			case ENEMY_STATE_RETREATING: {
+				// Move AWAY from player while still facing them (with wall collision)
+				float retreatAngle = angleToPlayer + 3.14159f; // Opposite direction
+				int moveX = (int)(sin(retreatAngle) * ENEMY_SPEED * 0.8f);
+				int moveY = (int)(cos(retreatAngle) * ENEMY_SPEED * 0.8f);
+				moveEnemyWithCollision(i, moveX, moveY);
+				
+				// Still shoot while retreating (faster cooldown)
+				if (currentTime - enemies[i].lastAttackTime >= ENEMY_ATTACK_COOLDOWN * 0.7f) {
+					float aimAngle = atan2((float)(playerX - enemies[i].x), (float)(playerY - enemies[i].y));
+					
+					int projType = PROJ_TYPE_PLASMA;
+					if (enemies[i].enemyType == ENEMY_TYPE_BOSSA2) projType = PROJ_TYPE_BULLET;
+					else if (enemies[i].enemyType == ENEMY_TYPE_BOSSA3) projType = PROJ_TYPE_SHELL;
+					else if (enemies[i].enemyType == ENEMY_TYPE_CACE) projType = PROJ_TYPE_FIREBALL;
+					
+					spawnProjectile((float)enemies[i].x, (float)enemies[i].y, (float)enemies[i].z + 15, aimAngle, projType, currentTime);
+					enemies[i].lastAttackTime = currentTime;
+				}
+				
+				// Update attack animation during retreat
+				int frameCount = 0;
+				if (enemies[i].enemyType == ENEMY_TYPE_BOSSA1) frameCount = BOSSA1_ATTACK_FRAME_COUNT;
+				else if (enemies[i].enemyType == ENEMY_TYPE_BOSSA2) frameCount = BOSSA2_ATTACK_FRAME_COUNT;
+				else if (enemies[i].enemyType == ENEMY_TYPE_BOSSA3) frameCount = BOSSA3_ATTACK_FRAME_COUNT;
+				else frameCount = 3;
+				
 				if (currentTime - enemies[i].lastAnimTime >= ENEMY_ANIM_SPEED) {
 					enemies[i].animFrame = (enemies[i].animFrame + 1) % frameCount;
 					enemies[i].lastAnimTime = currentTime;
 				}
+				break;
 			}
-		} else {
-			// Idle state - use frame 0 (only if not hurt)
-			if (enemies[i].state != ENEMY_STATE_HURT) {
-				enemies[i].state = ENEMY_STATE_IDLE;
+			
+			case ENEMY_STATE_ALERT: {
+				// Move towards last known player position
+				int alertDx = enemies[i].lastKnownPlayerX - enemies[i].x;
+				int alertDy = enemies[i].lastKnownPlayerY - enemies[i].y;
+				int alertDist = (int)sqrt(alertDx * alertDx + alertDy * alertDy);
+				
+				if (alertDist > 20) {
+					float alertAngle = atan2((float)alertDx, (float)alertDy);
+					int moveX = (int)(sin(alertAngle) * ENEMY_SPEED);
+					int moveY = (int)(cos(alertAngle) * ENEMY_SPEED);
+					moveEnemyWithCollision(i, moveX, moveY);
+				} else {
+					// Reached last known position, go back to idle
+					enemies[i].state = ENEMY_STATE_IDLE;
+					enemies[i].alerted = 0;
+				}
+				
+				// Update walk animation
+				int frameCount = getEnemyFrameCount(enemies[i].enemyType);
+				if (frameCount > 1 && currentTime - enemies[i].lastAnimTime >= ENEMY_ANIM_SPEED) {
+					enemies[i].animFrame = (enemies[i].animFrame + 1) % frameCount;
+					enemies[i].lastAnimTime = currentTime;
+				}
+				break;
+			}
+			
+			case ENEMY_STATE_IDLE:
+			default:
 				enemies[i].animFrame = 0;
-			}
+				break;
+		}
+		
+		// Keep enemy at same height as player (same plane) - EXCEPT Cacodemon
+		if (enemies[i].enemyType != ENEMY_TYPE_CACE && 
+		    enemies[i].state != ENEMY_STATE_DYING && 
+		    enemies[i].state != ENEMY_STATE_DEAD) {
+			enemies[i].z = playerZ;
 		}
 	}
+	
+	// Update previous player position for velocity tracking
+	prevPlayerX = playerX;
+	prevPlayerY = playerY;
 }
+
 
 // Check if player is aiming at an enemy (for shooting)
 // Returns enemy index or -1 if not aiming at enemy

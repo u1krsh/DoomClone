@@ -69,6 +69,7 @@ class Tool(Enum):
     VERTEX_EDIT = 2
     ENTITY = 3
     LIGHT = 4  # ADDED: Light editing tool
+    GATE = 5   # ADDED: Gate/Switch editing tool
 
 # Viewport types
 class ViewType(Enum):
@@ -142,8 +143,34 @@ class Light:
         self.flicker = flicker      # 0=None, 1=Candle, 2=Strobe, 3=Pulse, 4=Random
         self.active = 1
 
+# ADDED: Gate class for vertical doors
+class Gate:
+    def __init__(self, x=0, y=0, z_closed=0, z_open=40, gate_id=0,
+                 trigger_radius=50, texture=0, speed=2, width=64):
+        self.x = x
+        self.y = y
+        self.z_closed = z_closed    # Floor height when closed
+        self.z_open = z_open        # Height when fully open
+        self.gate_id = gate_id      # Unique ID for switch linking
+        self.trigger_radius = trigger_radius  # Radius for R-key activation
+        self.texture = texture      # Wall texture index
+        self.speed = speed          # Movement speed
+        self.width = width          # Gate width in world units
+        self.active = 1
+
+# ADDED: Switch class for gate triggers
+class Switch:
+    def __init__(self, x=0, y=0, z=20, linked_gate_id=0, texture=0):
+        self.x = x
+        self.y = y
+        self.z = z
+        self.linked_gate_id = linked_gate_id  # ID of gate to toggle
+        self.texture = texture
+        self.active = 1
+
 
 # ADDED: Texture class
+
 class Texture:
     def __init__(self, name: str, frames: List[pygame.Surface], frame_duration: int = 150):
         self.name = name
@@ -285,7 +312,7 @@ class OracularEditor:
             "File": ["New (Ctrl+N)", "Open (Ctrl+O)", "Save (Ctrl+S)", "---", "Exit"],
             "Edit": ["Undo (Ctrl+Z)", "Redo (Ctrl+Y)", "---", "Delete (Del)", "---", "Select All"],
             "View": ["Toggle Grid (G)", "Toggle Snap (Shift+S)"],
-            "Tools": ["Select (1)", "Create Sector (2)", "Vertex Edit (3)", "Entity (4)", "Light (5)"],
+            "Tools": ["Select (1)", "Create Sector (2)", "Vertex Edit (3)", "Entity (4)", "Light (5)", "Gate (6)"],
             "Help": ["About"]
         }
         
@@ -320,6 +347,30 @@ class OracularEditor:
         self.prop_light_intensity = 200
         self.prop_light_type = 0  # 0=Point, 1=Spot
         self.prop_light_flicker = 0  # 0=None, 1=Candle, 2=Strobe, 3=Pulse
+        
+        # ADDED: Gate list and selection
+        self.gates: List[Gate] = []
+        self.selected_gate = None
+        
+        # ADDED: Switch list and selection
+        self.switches: List[Switch] = []
+        self.selected_switch = None
+        
+        # ADDED: Gate property defaults
+        self.prop_gate_id = 0
+        self.prop_gate_z_closed = 0
+        self.prop_gate_z_open = 40
+        self.prop_gate_speed = 2
+        self.prop_gate_trigger_radius = 50
+        self.prop_gate_texture = 0
+        self.prop_gate_width = 64
+        
+        # ADDED: Switch property defaults
+        self.prop_switch_linked_gate_id = 0
+        self.prop_switch_texture = 0
+        
+        # ADDED: Gate/Switch mode toggle
+        self.gate_mode = "GATE"  # "GATE" or "SWITCH"
         
         # Light type and flicker names for UI
         self.light_type_names = ["Point", "Spot"]
@@ -1020,7 +1071,10 @@ class OracularEditor:
             self.current_tool = Tool.ENTITY
         elif event.key == pygame.K_5:
             self.current_tool = Tool.LIGHT
+        elif event.key == pygame.K_6:
+            self.current_tool = Tool.GATE
         elif event.key == pygame.K_g:
+
             self.show_grid = not self.show_grid
         elif event.key == pygame.K_s and pygame.key.get_mods() & pygame.KMOD_SHIFT:
             self.snap_to_grid = not self.snap_to_grid
@@ -1141,7 +1195,13 @@ class OracularEditor:
                         if self.selected_light is not None:
                             self.save_undo_snapshot()
                             self.dragging_geometry = True
+                    elif self.current_tool == Tool.GATE:
+                        self.handle_gate_click(vp, event.pos)
+                        if self.selected_gate is not None or self.selected_switch is not None:
+                            self.save_undo_snapshot()
+                            self.dragging_geometry = True
                 else:
+
                     vp.is_active = False
             
             # self.check_ui_click(event.pos) # MOVED TO TOP
@@ -1586,8 +1646,127 @@ class OracularEditor:
         self.selected_light = len(self.lights) - 1
         print(f"Created light at {int(wx)}, {int(wy)} with color ({self.prop_light_r}, {self.prop_light_g}, {self.prop_light_b})")
 
+    def handle_gate_click(self, vp, pos):
+        """Handle mouse click in GATE tool mode"""
+        if vp.view_type == ViewType.CAMERA_3D:
+            return
+            
+        wx, wy = vp.screen_to_world(pos[0], pos[1])
+        
+        # Check if clicking on existing gate or switch
+        clicked_gate = None
+        clicked_switch = None
+        min_dist = float('inf')
+        
+        # Check gates first
+        for i, gate in enumerate(self.gates):
+            if gate.active:
+                dist = math.sqrt((wx - gate.x)**2 + (wy - gate.y)**2)
+                click_radius = max(20, gate.width * 0.3) / vp.zoom
+                if dist < click_radius:
+                    if dist < min_dist:
+                        min_dist = dist
+                        clicked_gate = i
+                        clicked_switch = None
+        
+        # Check switches
+        for i, sw in enumerate(self.switches):
+            if sw.active:
+                dist = math.sqrt((wx - sw.x)**2 + (wy - sw.y)**2)
+                click_radius = 15 / vp.zoom
+                if dist < click_radius:
+                    if dist < min_dist:
+                        min_dist = dist
+                        clicked_switch = i
+                        clicked_gate = None
+        
+        # Select gate if clicked
+        if clicked_gate is not None:
+            self.selected_gate = clicked_gate
+            self.selected_switch = None
+            self.selected_sector = None
+            self.selected_wall = None
+            self.selected_enemy = None
+            self.selected_pickup = None
+            self.selected_light = None
+            # Load gate properties
+            gate = self.gates[clicked_gate]
+            self.prop_gate_id = gate.gate_id
+            self.prop_gate_z_closed = gate.z_closed
+            self.prop_gate_z_open = gate.z_open
+            self.prop_gate_speed = gate.speed
+            self.prop_gate_trigger_radius = gate.trigger_radius
+            self.prop_gate_texture = gate.texture
+            self.prop_gate_width = gate.width
+            print(f"Selected Gate {clicked_gate} (ID={gate.gate_id})")
+            return
+        
+        # Select switch if clicked
+        if clicked_switch is not None:
+            self.selected_switch = clicked_switch
+            self.selected_gate = None
+            self.selected_sector = None
+            self.selected_wall = None
+            self.selected_enemy = None
+            self.selected_pickup = None
+            self.selected_light = None
+            # Load switch properties
+            sw = self.switches[clicked_switch]
+            self.prop_switch_linked_gate_id = sw.linked_gate_id
+            self.prop_switch_texture = sw.texture
+            print(f"Selected Switch {clicked_switch} (linked to Gate {sw.linked_gate_id})")
+            return
+        
+        # If clicking on nothing and have selection, deselect
+        if self.selected_gate is not None or self.selected_switch is not None:
+            self.selected_gate = None
+            self.selected_switch = None
+            print("Deselected gate/switch")
+            return
+        
+        # Create new gate or switch based on mode
+        if self.snap_to_grid:
+            wx, wy = vp.snap_to_grid(wx, wy)
+        
+        self.save_undo_snapshot()
+        
+        if self.gate_mode == "GATE":
+            # Auto-assign gate ID
+            max_id = -1
+            for g in self.gates:
+                if g.gate_id > max_id:
+                    max_id = g.gate_id
+            new_id = max_id + 1
+            
+            new_gate = Gate(
+                x=int(wx), y=int(wy),
+                z_closed=self.prop_gate_z_closed,
+                z_open=self.prop_gate_z_open,
+                gate_id=new_id,
+                trigger_radius=self.prop_gate_trigger_radius,
+                texture=self.prop_gate_texture,
+                speed=self.prop_gate_speed,
+                width=self.prop_gate_width
+            )
+            self.gates.append(new_gate)
+            self.selected_gate = len(self.gates) - 1
+            self.selected_switch = None
+            print(f"Created Gate {new_id} at {int(wx)}, {int(wy)}")
+        else:
+            # Create switch
+            new_switch = Switch(
+                x=int(wx), y=int(wy), z=20,
+                linked_gate_id=self.prop_switch_linked_gate_id,
+                texture=self.prop_switch_texture
+            )
+            self.switches.append(new_switch)
+            self.selected_switch = len(self.switches) - 1
+            self.selected_gate = None
+            print(f"Created Switch at {int(wx)}, {int(wy)} linked to Gate {self.prop_switch_linked_gate_id}")
+
 
     def finish_sector_creation(self):
+
         if len(self.sector_vertices) < 3:
             print("Need at least 3 vertices to create a sector")
             self.creating_sector = False
@@ -2005,6 +2184,18 @@ class OracularEditor:
                 self.lights.pop(self.selected_light)
                 self.selected_light = None
                 print("Deleted light")
+        
+        elif self.selected_gate is not None:
+            if 0 <= self.selected_gate < len(self.gates):
+                self.gates.pop(self.selected_gate)
+                self.selected_gate = None
+                print("Deleted gate")
+        
+        elif self.selected_switch is not None:
+            if 0 <= self.selected_switch < len(self.switches):
+                self.switches.pop(self.selected_switch)
+                self.selected_switch = None
+                print("Deleted switch")
     
     def new_level(self):
         """Create new level"""
@@ -2020,7 +2211,12 @@ class OracularEditor:
         self.selected_pickup = None
         self.lights = []
         self.selected_light = None
+        self.gates = []
+        self.selected_gate = None
+        self.switches = []
+        self.selected_switch = None
         self.entity_mode = "ENEMY"
+        self.gate_mode = "GATE"
         self.creating_sector = False
         self.sector_vertices = []
         self.current_level_path = DEFAULT_LEVEL_PATH  # Reset to default path
@@ -2068,6 +2264,22 @@ class OracularEditor:
                         f.write(f"{light.x} {light.y} {light.z} {light.radius} {light.intensity} ")
                         f.write(f"{light.r} {light.g} {light.b} ")
                         f.write(f"{light.light_type} 0 0 0 0 {light.flicker} 100\n")
+                
+                # Write gates
+                f.write(f"\n{len(self.gates)}\n")
+                for gate in self.gates:
+                    if gate.active:
+                        # Format: x y z_closed z_open gate_id trigger_radius texture speed width
+                        f.write(f"{gate.x} {gate.y} {gate.z_closed} {gate.z_open} ")
+                        f.write(f"{gate.gate_id} {gate.trigger_radius} {gate.texture} ")
+                        f.write(f"{gate.speed} {gate.width}\n")
+                
+                # Write switches
+                f.write(f"\n{len(self.switches)}\n")
+                for sw in self.switches:
+                    if sw.active:
+                        # Format: x y z linked_gate_id texture
+                        f.write(f"{sw.x} {sw.y} {sw.z} {sw.linked_gate_id} {sw.texture}\n")
             
             print(f"Level saved to {self.current_level_path}")
             self.notification_message = "Level Saved!"
@@ -2181,10 +2393,60 @@ class OracularEditor:
                 except ValueError:
                     print("No lights found or invalid format")
             
+            # Parse gates
+            self.gates = []
+            if 'num_lights' in locals():
+                gate_line = light_line + num_lights + 2
+            else:
+                gate_line = light_line + 2
+            
+            if gate_line < len(lines):
+                try:
+                    num_gates = int(lines[gate_line].strip())
+                    for i in range(gate_line + 1, gate_line + 1 + num_gates):
+                        if i < len(lines):
+                            parts = list(map(int, lines[i].split()))
+                            if len(parts) >= 9:
+                                # Full format: x y z_closed z_open gate_id trigger_radius texture speed width
+                                gate = Gate(
+                                    x=parts[0], y=parts[1],
+                                    z_closed=parts[2], z_open=parts[3],
+                                    gate_id=parts[4], trigger_radius=parts[5],
+                                    texture=parts[6], speed=parts[7], width=parts[8]
+                                )
+                                self.gates.append(gate)
+                    print(f"Loaded {num_gates} gates")
+                except ValueError:
+                    print("No gates found or invalid format")
+            
+            # Parse switches
+            self.switches = []
+            if 'num_gates' in locals():
+                switch_line = gate_line + num_gates + 2
+            else:
+                switch_line = gate_line + 2
+            
+            if switch_line < len(lines):
+                try:
+                    num_switches = int(lines[switch_line].strip())
+                    for i in range(switch_line + 1, switch_line + 1 + num_switches):
+                        if i < len(lines):
+                            parts = list(map(int, lines[i].split()))
+                            if len(parts) >= 5:
+                                # Format: x y z linked_gate_id texture
+                                sw = Switch(
+                                    x=parts[0], y=parts[1], z=parts[2],
+                                    linked_gate_id=parts[3], texture=parts[4]
+                                )
+                                self.switches.append(sw)
+                    print(f"Loaded {num_switches} switches")
+                except ValueError:
+                    print("No switches found or invalid format")
+            
             # Center viewports on the loaded geometry
             self.center_viewports_on_level()
             
-            print(f"Loaded {len(self.sectors)} sectors, {len(self.walls)} walls, {len(self.lights)} lights from {self.current_level_path}")
+            print(f"Loaded {len(self.sectors)} sectors, {len(self.walls)} walls, {len(self.lights)} lights, {len(self.gates)} gates, {len(self.switches)} switches from {self.current_level_path}")
         except Exception as e:
             print(f"Error loading level: {e}")
     
@@ -2359,7 +2621,7 @@ class OracularEditor:
                         (toolbar_width, WINDOW_HEIGHT - self.STATUS_BAR_HEIGHT), 1)
         
         # Tool buttons
-        tools = [Tool.SELECT, Tool.CREATE_SECTOR, Tool.VERTEX_EDIT, Tool.ENTITY, Tool.LIGHT]
+        tools = [Tool.SELECT, Tool.CREATE_SECTOR, Tool.VERTEX_EDIT, Tool.ENTITY, Tool.LIGHT, Tool.GATE]
         button_y = 40
         button_size = 48
         button_margin = (toolbar_width - button_size) // 2
@@ -2401,7 +2663,7 @@ class OracularEditor:
         if pos[0] > toolbar_width or pos[1] < 30 or pos[1] > WINDOW_HEIGHT - self.STATUS_BAR_HEIGHT:
             return False
             
-        tools = [Tool.SELECT, Tool.CREATE_SECTOR, Tool.VERTEX_EDIT, Tool.ENTITY, Tool.LIGHT]
+        tools = [Tool.SELECT, Tool.CREATE_SECTOR, Tool.VERTEX_EDIT, Tool.ENTITY, Tool.LIGHT, Tool.GATE]
         button_y = 40
         button_size = 48
         button_margin = (toolbar_width - button_size) // 2
@@ -2536,6 +2798,16 @@ class OracularEditor:
             for i, light in enumerate(self.lights):
                 if light.active:
                     self.draw_light_2d(vp, light, i == self.selected_light)
+            
+            # Draw gates
+            for i, gate in enumerate(self.gates):
+                if gate.active:
+                    self.draw_gate_2d(vp, gate, i == self.selected_gate)
+            
+            # Draw switches
+            for i, sw in enumerate(self.switches):
+                if sw.active:
+                    self.draw_switch_2d(vp, sw, i == self.selected_switch)
         
         elif vp.view_type in (ViewType.FRONT, ViewType.SIDE):
             # Front/Side view: Draw sectors as rectangles with height
@@ -2784,8 +3056,67 @@ class OracularEditor:
             y2 = ly + int(math.sin(rad) * (center_size + ray_len))
             pygame.draw.line(self.screen, color, (x1, y1), (x2, y2), 1)
 
+    def draw_gate_2d(self, vp, gate, is_selected):
+        """Draw gate in 2D top view"""
+        gx, gy = vp.world_to_screen(gate.x, gate.y)
+        
+        # Gate color (brown/door-like)
+        color = (180, 120, 60) if not is_selected else (255, 200, 100)
+        
+        # Draw gate as a thick horizontal line (representing the door)
+        half_width = int(gate.width * vp.zoom * 0.5)
+        half_width = max(8, min(half_width, 80))  # Clamp for visibility
+        
+        # Draw the door bar
+        pygame.draw.line(self.screen, color, 
+                        (gx - half_width, gy), (gx + half_width, gy), 4)
+        
+        # Draw door ends/hinges
+        pygame.draw.circle(self.screen, color, (gx - half_width, gy), 5)
+        pygame.draw.circle(self.screen, color, (gx + half_width, gy), 5)
+        
+        # Draw center marker
+        pygame.draw.circle(self.screen, (255, 255, 0), (gx, gy), 4)
+        
+        # Draw trigger radius (dashed circle would be ideal, but solid for simplicity)
+        trigger_radius_px = int(gate.trigger_radius * vp.zoom * 0.5)
+        trigger_radius_px = max(10, min(trigger_radius_px, 100))
+        pygame.draw.circle(self.screen, (100, 100, 100), (gx, gy), trigger_radius_px, 1)
+        
+        # Selection highlight
+        if is_selected:
+            pygame.draw.circle(self.screen, (255, 255, 255), (gx, gy), 8, 2)
+            # Show gate ID
+            id_text = self.font_small.render(f"G{gate.gate_id}", True, (255, 255, 255))
+            self.screen.blit(id_text, (gx + 10, gy - 10))
+
+    def draw_switch_2d(self, vp, sw, is_selected):
+        """Draw switch in 2D top view"""
+        sx, sy = vp.world_to_screen(sw.x, sw.y)
+        
+        # Switch color (red for power switch)
+        color = (200, 50, 50) if not is_selected else (255, 100, 100)
+        
+        # Draw switch as a small square with handle
+        size = 8 if is_selected else 6
+        rect = pygame.Rect(sx - size, sy - size, size * 2, size * 2)
+        pygame.draw.rect(self.screen, color, rect)
+        pygame.draw.rect(self.screen, (255, 255, 255), rect, 1)
+        
+        # Draw toggle indicator
+        pygame.draw.line(self.screen, (0, 0, 0), 
+                        (sx - size//2, sy), (sx + size//2, sy - size), 2)
+        
+        # Selection highlight
+        if is_selected:
+            pygame.draw.rect(self.screen, (255, 255, 0), rect.inflate(4, 4), 2)
+            # Show linked gate ID
+            link_text = self.font_small.render(f"→G{sw.linked_gate_id}", True, (255, 255, 100))
+            self.screen.blit(link_text, (sx + size + 4, sy - 6))
+
     
     def draw_sector_creation_preview(self, vp):
+
         """Draw preview of sector being created"""
         if len(self.sector_vertices) == 0:
             return
@@ -2843,6 +3174,10 @@ class OracularEditor:
         # Draw lights in 3D
         if len(self.lights) > 0:
             self.draw_3d_lights(vp)
+        
+        # Draw gates in 3D
+        if len(self.gates) > 0:
+            self.draw_3d_gates(vp)
         
         # Draw controls overlay if this is the active viewport
         if vp.is_active:
@@ -3250,8 +3585,96 @@ class OracularEditor:
                 if is_selected:
                     pygame.draw.circle(self.screen, (255, 255, 255), (screen_x, screen_y), center_size + 3, 2)
 
+    def draw_3d_gates(self, vp):
+        """Draw gates in 3D view as horizontal bars"""
+        cam_x = self.player.x
+        cam_y = self.player.y
+        cam_z = self.player.z
+        cam_angle = math.radians(self.player.a)
+        
+        cos_a = math.cos(cam_angle)
+        sin_a = math.sin(cam_angle)
+        
+        # Sort gates by distance (far to near for proper draw order)
+        sorted_gates = []
+        for i, gate in enumerate(self.gates):
+            if gate.active:
+                dist_sq = (gate.x - cam_x)**2 + (gate.y - cam_y)**2
+                sorted_gates.append((dist_sq, gate, i))
+        
+        sorted_gates.sort(key=lambda x: x[0], reverse=True)
+        
+        for _, gate, idx in sorted_gates:
+            # Gate endpoints (perpendicular to X axis by default)
+            half_width = gate.width // 2
+            gx1, gy1 = gate.x - half_width, gate.y
+            gx2, gy2 = gate.x + half_width, gate.y
+            
+            # Transform to view space
+            rel_x1 = gx1 - cam_x
+            rel_y1 = gy1 - cam_y
+            rel_x2 = gx2 - cam_x
+            rel_y2 = gy2 - cam_y
+            
+            # Rotate by camera angle
+            rot_x1 = rel_x1 * cos_a - rel_y1 * sin_a
+            rot_y1 = rel_x1 * sin_a + rel_y1 * cos_a
+            rot_x2 = rel_x2 * cos_a - rel_y2 * sin_a
+            rot_y2 = rel_x2 * sin_a + rel_y2 * cos_a
+            
+            # Skip if both endpoints behind camera
+            if rot_y1 < 1 and rot_y2 < 1:
+                continue
+            
+            # Clip to near plane
+            if rot_y1 < 1:
+                t = (1 - rot_y1) / (rot_y2 - rot_y1)
+                rot_x1 = rot_x1 + t * (rot_x2 - rot_x1)
+                rot_y1 = 1
+            if rot_y2 < 1:
+                t = (1 - rot_y2) / (rot_y1 - rot_y2)
+                rot_x2 = rot_x2 + t * (rot_x1 - rot_x2)
+                rot_y2 = 1
+            
+            # Project to screen
+            scale = 200
+            screen_x1 = int(vp.rect.x + vp.rect.width // 2 + rot_x1 * scale / rot_y1)
+            screen_x2 = int(vp.rect.x + vp.rect.width // 2 + rot_x2 * scale / rot_y2)
+            
+            # Gate Z position (at z_closed, door is 40 units tall - same as game)
+            gate_bottom = gate.z_closed
+            gate_top = gate_bottom + 40
+            
+            # Project Y (vertical position on screen) for bottom and top at each endpoint
+            screen_y1_bot = int(vp.rect.y + vp.rect.height // 2 - (gate_bottom - cam_z) * scale / rot_y1)
+            screen_y1_top = int(vp.rect.y + vp.rect.height // 2 - (gate_top - cam_z) * scale / rot_y1)
+            screen_y2_bot = int(vp.rect.y + vp.rect.height // 2 - (gate_bottom - cam_z) * scale / rot_y2)
+            screen_y2_top = int(vp.rect.y + vp.rect.height // 2 - (gate_top - cam_z) * scale / rot_y2)
+            
+            # Color (brown for gate)
+            is_selected = (idx == self.selected_gate)
+            color = (255, 200, 100) if is_selected else (180, 120, 60)
+            
+            # Draw gate as a quad (4 lines connecting corners)
+            # Corners: top-left, top-right, bottom-right, bottom-left
+            tl = (screen_x1, screen_y1_top)
+            tr = (screen_x2, screen_y2_top)
+            br = (screen_x2, screen_y2_bot)
+            bl = (screen_x1, screen_y1_bot)
+            
+            # Check if any point is in viewport
+            if vp.rect.collidepoint(tl) or vp.rect.collidepoint(tr) or \
+               vp.rect.collidepoint(br) or vp.rect.collidepoint(bl):
+                pygame.draw.polygon(self.screen, color, [tl, tr, br, bl], 0)  # Filled
+                pygame.draw.polygon(self.screen, (0, 0, 0), [tl, tr, br, bl], 1)  # Border
+                
+                # Draw selection highlight
+                if is_selected:
+                    pygame.draw.polygon(self.screen, (255, 255, 255), [tl, tr, br, bl], 2)
+
     
     def clip_behind_camera(self, x1, y1, z1, x2, y2, z2):
+
         """Clip line segment behind camera"""
         if y1 == 0:
             y1 = 1
@@ -3681,7 +4104,93 @@ class OracularEditor:
             cy += 10
             draw_info("Lights", str(len(self.lights)))
 
+        elif self.selected_gate is not None and self.selected_gate < len(self.gates):
+            # Gate is selected - show its properties
+            gate = self.gates[self.selected_gate]
+            draw_header(f"GATE #{self.selected_gate}")
+            
+            draw_section("Transform")
+            draw_field("Pos X", gate, 'x', gate.x)
+            draw_field("Pos Y", gate, 'y', gate.y)
+            draw_field("Width", gate, 'width', gate.width)
+            
+            draw_section("Heights")
+            draw_field("Z Closed", gate, 'z_closed', gate.z_closed)
+            draw_field("Z Open", gate, 'z_open', gate.z_open)
+            
+            draw_section("Behavior")
+            draw_field("Gate ID", gate, 'gate_id', gate.gate_id)
+            draw_field("Speed", gate, 'speed', gate.speed)
+            draw_field("Trigger Radius", gate, 'trigger_radius', gate.trigger_radius)
+            
+            draw_texture_selector("Gate Texture", gate.texture, self.textures, gate, 'texture')
+
+        elif self.selected_switch is not None and self.selected_switch < len(self.switches):
+            # Switch is selected - show its properties
+            sw = self.switches[self.selected_switch]
+            draw_header(f"SWITCH #{self.selected_switch}")
+            
+            draw_section("Transform")
+            draw_field("Pos X", sw, 'x', sw.x)
+            draw_field("Pos Y", sw, 'y', sw.y)
+            draw_field("Pos Z", sw, 'z', sw.z)
+            
+            draw_section("Link")
+            draw_field("Linked Gate ID", sw, 'linked_gate_id', sw.linked_gate_id)
+            
+            draw_texture_selector("Switch Texture", sw.texture, self.textures, sw, 'texture')
+
+        elif self.current_tool == Tool.GATE:
+            draw_header("TOOL: GATE")
+            
+            # Mode toggle (Gate vs Switch)
+            draw_section("Mode")
+            mode_y = cy
+            mode_btn_w = (cw - 10) // 2
+            
+            gate_btn_rect = pygame.Rect(cx, mode_y, mode_btn_w, 26)
+            switch_btn_rect = pygame.Rect(cx + mode_btn_w + 10, mode_y, mode_btn_w, 26)
+            
+            gate_color = Colors.ACCENT if self.gate_mode == "GATE" else (60, 60, 60)
+            switch_color = Colors.ACCENT if self.gate_mode == "SWITCH" else (60, 60, 60)
+            
+            pygame.draw.rect(self.screen, gate_color, gate_btn_rect, border_radius=4)
+            pygame.draw.rect(self.screen, switch_color, switch_btn_rect, border_radius=4)
+            
+            gt = self.font_small.render("GATE", True, (255, 255, 255))
+            st = self.font_small.render("SWITCH", True, (255, 255, 255))
+            self.screen.blit(gt, (gate_btn_rect.centerx - gt.get_width()//2, mode_y + 5))
+            self.screen.blit(st, (switch_btn_rect.centerx - st.get_width()//2, mode_y + 5))
+            
+            def set_gate_mode():
+                self.gate_mode = "GATE"
+            def set_switch_mode():
+                self.gate_mode = "SWITCH"
+                
+            self.ui_buttons.append({'rect': gate_btn_rect, 'action': set_gate_mode})
+            self.ui_buttons.append({'rect': switch_btn_rect, 'action': set_switch_mode})
+            cy = mode_y + 40
+            
+            if self.gate_mode == "GATE":
+                draw_section("Gate Defaults")
+                draw_field("Z Closed", self, 'prop_gate_z_closed', self.prop_gate_z_closed)
+                draw_field("Z Open", self, 'prop_gate_z_open', self.prop_gate_z_open)
+                draw_field("Speed", self, 'prop_gate_speed', self.prop_gate_speed)
+                draw_field("Width", self, 'prop_gate_width', self.prop_gate_width)
+                draw_field("Trigger Radius", self, 'prop_gate_trigger_radius', self.prop_gate_trigger_radius)
+                draw_texture_selector("Gate Texture", self.prop_gate_texture, self.textures, self, 'prop_gate_texture')
+            else:
+                draw_section("Switch Defaults")
+                draw_field("Linked Gate ID", self, 'prop_switch_linked_gate_id', self.prop_switch_linked_gate_id)
+                draw_texture_selector("Switch Texture", self.prop_switch_texture, self.textures, self, 'prop_switch_texture')
+            
+            # Counts
+            cy += 10
+            draw_info("Gates", str(len(self.gates)))
+            draw_info("Switches", str(len(self.switches)))
+
         else:
+
             draw_header("SCENE INFO")
             
             draw_section("Statistics")
