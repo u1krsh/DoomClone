@@ -8,6 +8,7 @@ include_directories(
         .
         textures
         tools/textures
+        Texture_Editor
 )
 
 find_package(OpenGL REQUIRED)
@@ -29,6 +30,7 @@ target_link_libraries(DoomClone
         OpenGL::GLU
         glut
         openal
+        X11
         m
 )
 

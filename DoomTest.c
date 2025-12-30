@@ -2,6 +2,14 @@
 #include <stdio.h>
 #include <GL/glut.h>
 #include <math.h>
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
+#include <GL/glx.h>
+#include <stdlib.h>
+
+// STB Image for loading PNG icons
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 
 #include "data_types.h"
 #define SCRPOS_H GSLH / 8 
@@ -2241,6 +2249,59 @@ void init() {
 	// Initialize screen melt effect (but don't start it yet - wait for Enter key)
 	initScreenMelt();
 }
+
+// Function to set window icon using X11
+void setWindowIcon(const char* iconPath) {
+	Display* display = glXGetCurrentDisplay();
+	Window window = glXGetCurrentDrawable();
+	
+	if (!display || !window) {
+		printf("Warning: Could not get X11 display/window for icon\n");
+		return;
+	}
+	
+	// Load icon image using STB
+	int width, height, channels;
+	unsigned char* data = stbi_load(iconPath, &width, &height, &channels, 4); // Force RGBA
+	
+	if (!data) {
+		printf("Warning: Could not load icon from %s\n", iconPath);
+		return;
+	}
+	
+	// Convert RGBA to ARGB format expected by X11
+	unsigned long* iconData = (unsigned long*)malloc(sizeof(unsigned long) * (2 + width * height));
+	if (!iconData) {
+		stbi_image_free(data);
+		return;
+	}
+	
+	iconData[0] = width;
+	iconData[1] = height;
+	
+	for (int i = 0; i < width * height; i++) {
+		unsigned char r = data[i * 4 + 0];
+		unsigned char g = data[i * 4 + 1];
+		unsigned char b = data[i * 4 + 2];
+		unsigned char a = data[i * 4 + 3];
+		iconData[i + 2] = (a << 24) | (r << 16) | (g << 8) | b;
+	}
+	
+	// Set the icon
+	Atom net_wm_icon = XInternAtom(display, "_NET_WM_ICON", False);
+	Atom cardinal = XInternAtom(display, "CARDINAL", False);
+	
+	XChangeProperty(display, window, net_wm_icon, cardinal, 32,
+	                PropModeReplace, (unsigned char*)iconData, 2 + width * height);
+	
+	XFlush(display);
+	
+	free(iconData);
+	stbi_image_free(data);
+	
+	printf("Window icon set successfully\n");
+}
+
 int main(int argc, char* argv[]) {
 	glutInit(&argc, argv);
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
@@ -2250,6 +2311,10 @@ int main(int argc, char* argv[]) {
 	glPointSize(pixelScale);
 	gluOrtho2D(0, GSLW, 0, GSLH);
 	init();
+	
+	// Set window icon
+	setWindowIcon("textures/game_icon.png");
+	
 	glutDisplayFunc(display);
 	glutKeyboardFunc(KeysDown);
 	glutKeyboardUpFunc(KeysUp);

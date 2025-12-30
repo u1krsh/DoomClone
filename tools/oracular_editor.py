@@ -246,6 +246,16 @@ class OracularEditor:
         self.height = WINDOW_HEIGHT
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         pygame.display.set_caption("Oracular Editor")
+        
+        # Set window icon
+        try:
+            icon_path = os.path.join(BASE_PATH, "..", "textures", "icon.png")
+            if os.path.exists(icon_path):
+                icon = pygame.image.load(icon_path)
+                pygame.display.set_icon(icon)
+        except Exception as e:
+            print(f"Warning: Could not load window icon: {e}")
+        
         self.clock = pygame.time.Clock()
         self.running = True
         
@@ -4617,8 +4627,9 @@ def run_splash_screen():
         return
 
     try:
-        # Center the window
+        # Set SDL hints BEFORE pygame.init() to minimize black flash
         os.environ['SDL_VIDEO_CENTERED'] = '1'
+        os.environ['SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS'] = '0'
         
         # Initialize pygame for splash
         pygame.init()
@@ -4653,6 +4664,10 @@ def run_splash_screen():
         
         waiting = True
         while waiting:
+            # Redraw to prevent black screen
+            screen.blit(splash_img, (0, 0))
+            pygame.display.flip()
+            
             current_time = pygame.time.get_ticks()
             if current_time - start_time > duration:
                 waiting = False
