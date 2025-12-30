@@ -14,6 +14,7 @@ from tkinter import Tk, filedialog
 pygame.init()
 
 # === CONSTANTS ===
+# === CONSTANTS ===
 WINDOW_WIDTH = 1600
 WINDOW_HEIGHT = 900
 FPS = 60
@@ -1974,58 +1975,31 @@ class OracularEditor:
             # Content
             content_y = dialog_y + 40
             
-            # Logo & Text Layout
-            # We want [Logo] [Text] side by side
-            # Logo should be small, e.g., 64px height
+            # Content
+            content_y = dialog_y + 40
             
-            target_h = 64
-            
-            # Prepare scaled surfaces
-            surf_logo = None
-            if self.logo_img:
-                scale = target_h / self.logo_img.get_height()
-                new_w = int(self.logo_img.get_width() * scale)
-                surf_logo = pygame.transform.smoothscale(self.logo_img, (new_w, target_h))
-            
-            surf_text = None
-            if self.logo_text_img:
-                # Scale text to be smaller than logo, e.g. 40px height
-                text_target_h = 40
-                scale = text_target_h / self.logo_text_img.get_height()
-                new_w = int(self.logo_text_img.get_width() * scale)
-                
-                # Check if it fits in remaining width (dialog width - logo width - padding)
-                max_w = dialog_width - (new_w if surf_logo is None else surf_logo.get_width()) - 60
-                if new_w > max_w:
-                    scale = max_w / self.logo_text_img.get_width()
-                    new_w = max_w
-                    text_target_h = int(self.logo_text_img.get_height() * scale)
-                
-                surf_text = pygame.transform.smoothscale(self.logo_text_img, (new_w, text_target_h))
-            
-            # Calculate total width to center them
-            total_w = 0
-            gap = 15
-            if surf_logo: total_w += surf_logo.get_width()
-            if surf_text: total_w += surf_text.get_width()
-            if surf_logo and surf_text: total_w += gap
-            
-            start_x = dialog_x + (dialog_width - total_w) // 2
-            
-            # Draw them
-            curr_x = start_x
-            if surf_logo:
-                self.screen.blit(surf_logo, (curr_x, content_y))
-                curr_x += surf_logo.get_width() + gap
-            
-            if surf_text:
-                self.screen.blit(surf_text, (curr_x, content_y))
-            elif not surf_text:
-                # Fallback if text image missing
-                title_surf = self.font_title.render("Oracular Editor", True, Colors.TEXT)
-                self.screen.blit(title_surf, (curr_x, content_y + (target_h - title_surf.get_height())//2))
-
-            content_y += target_h + 30
+            # Draw Splash Image
+            target_h = 0 # Default if no splash
+            splash_path = os.path.join(TEXTURE_DIR, "splash.png")
+            if os.path.exists(splash_path):
+                try:
+                    splash_surf = pygame.image.load(splash_path).convert()
+                    # Fit to dialog width with padding
+                    target_w = dialog_width - 40
+                    scale = target_w / splash_surf.get_width()
+                    target_h = int(splash_surf.get_height() * scale)
+                    
+                    splash_surf = pygame.transform.smoothscale(splash_surf, (target_w, target_h))
+                    
+                    # Draw
+                    splash_rect = splash_surf.get_rect(center=(dialog_x + dialog_width // 2, content_y + target_h // 2))
+                    self.screen.blit(splash_surf, splash_rect)
+                    
+                    content_y += target_h + 20
+                except Exception as e:
+                    print(f"Error loading splash for about: {e}")
+                    
+            # Fallback to text if splash fails or just add version below
             
             # Version
             ver_surf = self.font_small.render("v1.0.0", True, Colors.ACCENT_BRIGHT)
@@ -4636,9 +4610,78 @@ class OracularEditor:
         text_rect = text_surface.get_rect(center=(x, y))
         self.screen.blit(text_surface, text_rect)
 
+def run_splash_screen():
+    """Show borderless splash screen before main app"""
+    splash_path = os.path.join(TEXTURE_DIR, "splash.png")
+    if not os.path.exists(splash_path):
+        return
+
+    try:
+        # Center the window
+        os.environ['SDL_VIDEO_CENTERED'] = '1'
+        
+        # Initialize pygame for splash
+        pygame.init()
+        
+        # Load image first to get dimensions
+        splash_img_full = pygame.image.load(splash_path)
+        
+        # Resize logic
+        target_width = 600
+        original_width = splash_img_full.get_width()
+        original_height = splash_img_full.get_height()
+        
+        if original_width > target_width:
+            aspect_ratio = original_height / original_width
+            new_height = int(target_width * aspect_ratio)
+            splash_img = pygame.transform.smoothscale(splash_img_full, (target_width, new_height))
+        else:
+            splash_img = splash_img_full
+            
+        img_rect = splash_img.get_rect()
+        
+        # Create borderless window
+        screen = pygame.display.set_mode((img_rect.width, img_rect.height), pygame.NOFRAME)
+        
+        # Draw splash
+        screen.blit(splash_img, (0, 0))
+        pygame.display.flip()
+        
+        # Wait 3 seconds
+        start_time = pygame.time.get_ticks()
+        duration = 3000
+        
+        waiting = True
+        while waiting:
+            current_time = pygame.time.get_ticks()
+            if current_time - start_time > duration:
+                waiting = False
+                
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    sys.exit()
+                if event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
+                    waiting = False # Skip on input
+            
+            pygame.time.delay(10) # Small sleep to reduce CPU usage
+            
+        # Cleanup
+        pygame.display.quit()
+        
+    except Exception as e:
+        print(f"Splash screen error: {e}")
+        # Try to clean up if something broke
+        try: pygame.display.quit()
+        except: pass
+
 # === MAIN ===
 def main():
+    # Run splash first (it handles its own pygame.init/quit for the splash window)
+    run_splash_screen()
+    
+    # Now start the actual editor
     editor = OracularEditor()
+    # editor.show_splash() # REMOVED
     editor.load_level()
     editor.run()
 
