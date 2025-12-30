@@ -52,6 +52,9 @@
 // Gate system
 #include "gates.h"
 
+// Glass material system
+#include "glass.h"
+
 // Global pause state
 int gamePaused = 0;
 int hasBlueKey = 0; // Inventory flag
@@ -123,6 +126,22 @@ void load()
 		fscanf(fp, "%i", &W[s].u);
 		fscanf(fp, "%i", &W[s].v);
 		fscanf(fp, "%i", &W[s].shade);
+		
+		// Try to read extended glass properties (material, tint_r, tint_g, tint_b, opacity)
+		// If not present, use defaults for backward compatibility
+		int material = 0, tint_r = 220, tint_g = 230, tint_b = 240, opacity = 80;
+		int read = fscanf(fp, "%i %i %i %i %i", &material, &tint_r, &tint_g, &tint_b, &opacity);
+		
+		W[s].material = material;
+		W[s].tint_r = (read >= 2) ? tint_r : GLASS_TINT_CLEAR_R;
+		W[s].tint_g = (read >= 3) ? tint_g : GLASS_TINT_CLEAR_G;
+		W[s].tint_b = (read >= 4) ? tint_b : GLASS_TINT_CLEAR_B;
+		W[s].opacity = (read >= 5) ? opacity : 80;
+		
+		if (W[s].material == MATERIAL_GLASS) {
+			printf("LOADED GLASS WALL %d: material=%d, tint=(%d,%d,%d), opacity=%d\n",
+				s, W[s].material, W[s].tint_r, W[s].tint_g, W[s].tint_b, W[s].opacity);
+		}
 	}
 	fscanf(fp, "%i %i %i %i %i", &P.x, &P.y, &P.z, &P.a, &P.l); //player position, angle, look direction 
 
@@ -257,6 +276,17 @@ void pixel(int x, int y, int r, int g, int b) { //draws pixel at x,y with color 
 	glBegin(GL_POINTS);
 	glVertex2i(x * pixelScale + 2, y * pixelScale + 2);
 	glEnd();
+}
+
+// Alpha-blended pixel for glass transparency
+void pixelAlpha(int x, int y, int r, int g, int b, int a) {
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glColor4ub(r, g, b, a);
+	glBegin(GL_POINTS);
+	glVertex2i(x * pixelScale + 2, y * pixelScale + 2);
+	glEnd();
+	glDisable(GL_BLEND);
 }
 
 void movePl()
@@ -529,6 +559,20 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 	if (dx == 0) { dx = 1; } // prevent divide by zero
 	int xs = x1; //hold initial x1 staring position
 
+	// Determine if this is a glass wall for later use in the standard loop
+	int isGlassWall = (W[w].material == MATERIAL_GLASS);
+	
+	// Skip glass walls on loop 0 (let floor/ceiling/other walls render first)
+	// We will render glass in loop 1 using the standard wall logic but with alpha blending
+	if (isGlassWall && loop == 0) {
+		return;
+	}
+	
+	// Skip glass walls on loop 0 (let floor/ceiling/other walls render first)
+	if (isGlassWall && loop == 0) {
+		return;
+	}
+
 	// Store original x1, x2 for texture coordinate calculation before clipping
 	int x1_orig = x1;
 	int x2_orig = x2;
@@ -701,6 +745,7 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 				// Apply dynamic lighting
 				applyLightingToPixel(&r, &g, &b, worldX, worldY, worldZ, dist);
 				pixel(x, y, r, g, b);
+				setGlassBackground(x, y, r, g, b);
 			}
 		}
 		
@@ -730,6 +775,7 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 				// Apply dynamic lighting
 				applyLightingToPixel(&r, &g, &b, worldX, worldY, worldZ, dist);
 				pixel(x, y, r, g, b);
+				setGlassBackground(x, y, r, g, b);
 			}
 		}
 		
@@ -761,6 +807,7 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 				// Apply dynamic lighting
 				applyLightingToPixel(&r, &g, &b, worldX, worldY, worldZ, dist);
 				pixel(x, y, r, g, b);
+				setGlassBackground(x, y, r, g, b);
 			}
 			
 			// Draw CEILING from y2 to saved Y
@@ -788,6 +835,7 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 				// Apply dynamic lighting
 				applyLightingToPixel(&r, &g, &b, worldX, worldY, worldZ, dist);
 				pixel(x, y, r, g, b);
+				setGlassBackground(x, y, r, g, b);
 			}
 		}
 		
@@ -820,19 +868,44 @@ void drawWall(int x1, int x2, int b1, int b2, int t1, int t2, int s, int w, int 
 				// Bounds check for pixel index
 				int maxPixel = texWidth * texHeight * 3;
 				if (pixelN >= 0 && pixelN + 2 < maxPixel) {
-					// Get base texture color
-					int r = texData[pixelN + 0];
-					int g = texData[pixelN + 1];
-					int b = texData[pixelN + 2];
-					
 					// Calculate wall Z (vertical position)
 					float vertT = (float)(y - y1_orig) / (float)wall_height;
 					int wallWorldZ = S[s].z1 + (int)((S[s].z2 - S[s].z1) * (1.0f - vertT));
-					
-					// Apply dynamic lighting (colored lights + ambient)
-					applyLightingToPixel(&r, &g, &b, wallWorldX, wallWorldY, wallWorldZ, curDist);
-					
-					pixel(x, y, r, g, b);
+                    
+                    if (isGlassWall) {
+                        // GLASS RENDERING
+                        int r = W[w].tint_r;
+                        int g = W[w].tint_g;
+                        int b = W[w].tint_b;
+                        int alpha = W[w].opacity;
+                        
+                        // Ensure reasonable alpha
+                        if (alpha < 30) alpha = 30; if (alpha > 230) alpha = 230;
+
+                        // Fresnel / Edge effect
+                        // Use relative Y position for edge detection
+                        if (y - y1 < 5 || y2 - y < 5) {
+                            alpha = (alpha + 80 > 255) ? 255 : alpha + 80;
+                        }
+                        
+                        // Apply dynamic lighting to tint
+                        applyLightingToPixel(&r, &g, &b, wallWorldX, wallWorldY, wallWorldZ, curDist);
+                        
+                        // Draw with blending
+                        pixelAlpha(x, y, r, g, b, alpha);
+                        
+                    } else {
+                        // STANDARD TEXTURED RENDERING
+                        int r = texData[pixelN + 0];
+                        int g = texData[pixelN + 1];
+                        int b = texData[pixelN + 2];
+                        
+                        // Apply dynamic lighting (colored lights + ambient)
+                        applyLightingToPixel(&r, &g, &b, wallWorldX, wallWorldY, wallWorldZ, curDist);
+                        
+                        pixel(x, y, r, g, b);
+                        setGlassBackground(x, y, r, g, b);  // Store for legacy effects (if any)
+                    }
 				}
 			}
 		}
@@ -852,6 +925,9 @@ void draw3D() {
 	for (x = 0; x < SW; x++) {
 		depthBuffer[x] = 99999.0f; // Far distance
 	}
+	
+	// Initialize glass rendering system
+	initGlassSystem();
 	
 	// Pre-calculate sector distances for proper sorting
 	for (s = 0; s < numSect; s++) {
@@ -1131,6 +1207,9 @@ void draw3D() {
 
 	// Draw projectiles (after enemies)
 	drawProjectiles();
+	
+	// Render all glass walls (deferred rendering for proper alpha blending)
+	renderGlassWalls(P.x, P.y, P.z, P.a, M.cos[P.a], M.sin[P.a]);
 }
 
 // Draw enemies as billboarded sprites (supports multiple enemy types)

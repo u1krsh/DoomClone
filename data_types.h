@@ -40,6 +40,9 @@ typedef struct {
 	int c;// wall color 
 	int wt, u, v; //wall texture and u/v tile
 	int shade;             //shade of the wall
+	int material;          // 0=solid, 1=glass, 2=fence/transparent
+	int tint_r, tint_g, tint_b;  // Glass tint color (RGB)
+	int opacity;           // Glass opacity (0-255, 0=fully transparent)
 } walls;
 
 typedef struct {

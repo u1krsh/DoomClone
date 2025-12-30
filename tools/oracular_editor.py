@@ -5,6 +5,7 @@ import math
 import os
 import re  # ADDED: for texture header parsing
 import copy # ADDED: for undo/redo
+import colorsys # ADDED: for color wheel
 from enum import Enum
 from typing import List, Tuple, Optional
 from tkinter import Tk, filedialog
@@ -79,8 +80,23 @@ class ViewType(Enum):
     CAMERA_3D = 3
 
 # === DATA STRUCTURES ===
+# Material types
+MATERIAL_SOLID = 0
+MATERIAL_GLASS = 1
+MATERIAL_FENCE = 2
+
+# Glass tint presets
+GLASS_TINT_PRESETS = {
+    "Clear": (220, 230, 240),
+    "Blue": (150, 180, 220),
+    "Green": (150, 200, 160),
+    "Amber": (220, 180, 120),
+    "Red": (220, 140, 140),
+}
+
 class Wall:
-    def __init__(self, x1=0, y1=0, x2=0, y2=0, wt=0, u=1, v=1, shade=0):
+    def __init__(self, x1=0, y1=0, x2=0, y2=0, wt=0, u=1, v=1, shade=0,
+                 material=0, tint_r=220, tint_g=230, tint_b=240, opacity=80):
         self.x1 = x1
         self.y1 = y1
         self.x2 = x2
@@ -89,6 +105,11 @@ class Wall:
         self.u = u  # u tile / scale
         self.v = v  # v tile / scale
         self.shade = shade
+        self.material = material  # 0=solid, 1=glass, 2=fence
+        self.tint_r = tint_r  # Glass tint red
+        self.tint_g = tint_g  # Glass tint green
+        self.tint_b = tint_b  # Glass tint blue
+        self.opacity = opacity  # Glass opacity (0-255)
 
 class Sector:
     def __init__(self, ws=0, we=0, z1=0, z2=40, st=0, ss=4, tag=0):
@@ -322,6 +343,12 @@ class OracularEditor:
         self.prop_wall_texture = 0
         self.prop_wall_u = 1
         self.prop_wall_v = 1
+        self.prop_wall_material = 0  # 0=solid, 1=glass, 2=fence
+        self.prop_wall_tint_preset = "Clear"  # Tint preset name
+        self.prop_wall_tint_r = 220
+        self.prop_wall_tint_g = 230
+        self.prop_wall_tint_b = 240
+        self.prop_wall_opacity = 80  # 0-255
         self.prop_sector_z1 = 0
         self.prop_sector_z2 = 40
         self.prop_sector_texture = 0
@@ -419,6 +446,15 @@ class OracularEditor:
         
         # ADDED: buttons for texture navigation
         self.texture_nav_buttons = []  # list of (rect, delta)
+        
+        # ADDED: Color Picker State
+        self.picker_active_drag = None # 'hue' or 'sv' or None
+        self.picker_hue_surf = None
+        self.picker_sv_sat_mask = None
+        self.picker_sv_val_mask = None
+        
+        self.init_color_picker_resources()
+
         
 
 
@@ -1354,6 +1390,41 @@ class OracularEditor:
         # Property items
         for item in self.property_items:
             if item['rect'].collidepoint(pos):
+                # Handle glass toggle checkbox specially
+                if item.get('toggle_glass'):
+                    if self.prop_wall_material == MATERIAL_GLASS:
+                        self.prop_wall_material = MATERIAL_SOLID
+                    else:
+                        self.prop_wall_material = MATERIAL_GLASS
+                    return True
+                
+                # Handle toggle for existing wall glass property
+                if item.get('toggle_wall_glass'):
+                    wall = item['target']
+                    if getattr(wall, 'material', 0) == MATERIAL_GLASS:
+                        wall.material = MATERIAL_SOLID
+                    else:
+                        wall.material = MATERIAL_GLASS
+                        # Initialize glass properties if needed
+                        if not hasattr(wall, 'tint_r'): wall.tint_r = 220
+                        if not hasattr(wall, 'tint_g'): wall.tint_g = 230
+                        if not hasattr(wall, 'tint_b'): wall.tint_b = 240
+                        if not hasattr(wall, 'opacity'): wall.opacity = 80
+                    return True
+                
+                # Handle tint preset button click
+                if item.get('tint_preset'):
+                    preset = item['tint_preset']
+                    self.prop_wall_tint_preset = preset
+                    r, g, b = GLASS_TINT_PRESETS[preset]
+                    self.prop_wall_tint_r = r
+                    self.prop_wall_tint_g = g
+                    self.prop_wall_tint_b = b
+                    self.prop_wall_tint_b = b
+                    return True
+                
+
+
                 self.edit_field = item
                 current_val = getattr(item['target'], item['attr'])
                 self.edit_buffer = str(current_val)
@@ -1785,7 +1856,10 @@ class OracularEditor:
             shade = int(angle % 180)
             if shade > 90: shade = 90 - (shade - 90)
             wall = Wall(x1, y1, x2, y2, self.prop_wall_texture,
-                        self.prop_wall_u, self.prop_wall_v, shade)
+                        self.prop_wall_u, self.prop_wall_v, shade,
+                        self.prop_wall_material, self.prop_wall_tint_r,
+                        self.prop_wall_tint_g, self.prop_wall_tint_b,
+                        self.prop_wall_opacity)
             self.walls.append(wall)
         wall_end = len(self.walls)
         sector = Sector(wall_start, wall_end, self.prop_sector_z1, self.prop_sector_z2,
@@ -2238,10 +2312,15 @@ class OracularEditor:
                 for s in self.sectors:
                     f.write(f"{s.ws} {s.we} {s.z1} {s.z2} {s.st} {s.ss} {s.tag}\n")
                 
-                # Write walls
+                # Write walls (including material properties for glass)
                 f.write(f"{len(self.walls)}\n")
                 for w in self.walls:
-                    f.write(f"{w.x1} {w.y1} {w.x2} {w.y2} {w.wt} {w.u} {w.v} {w.shade}\n")
+                    material = getattr(w, 'material', 0)
+                    tint_r = getattr(w, 'tint_r', 220)
+                    tint_g = getattr(w, 'tint_g', 230)
+                    tint_b = getattr(w, 'tint_b', 240)
+                    opacity = getattr(w, 'opacity', 80)
+                    f.write(f"{w.x1} {w.y1} {w.x2} {w.y2} {w.wt} {w.u} {w.v} {w.shade} {material} {tint_r} {tint_g} {tint_b} {opacity}\n")
                 
                 # Write player
                 f.write(f"\n{self.player.x} {self.player.y} {self.player.z} {self.player.a} {self.player.l}\n")
@@ -2916,7 +2995,11 @@ class OracularEditor:
         else:
             return
         
-        # Wall color based on state
+        # Check wall material type
+        is_glass = getattr(wall, 'material', 0) == MATERIAL_GLASS
+        is_fence = getattr(wall, 'material', 0) == MATERIAL_FENCE
+        
+        # Wall color based on state and material
         if is_selected:
             color = Colors.WALL_SELECTED
             width = 3
@@ -2926,11 +3009,47 @@ class OracularEditor:
         elif is_hovered:
             color = Colors.SELECT_HOVER
             width = 2
+        elif is_glass:
+            # Glass: cyan/teal color
+            color = (0, 200, 220)
+            width = 2
+        elif is_fence:
+            # Fence: yellow/orange
+            color = (220, 180, 50)
+            width = 1
         else:
             color = Colors.WALL
             width = 1
-            
-        pygame.draw.line(self.screen, color, (x1, y1), (x2, y2), width)
+        
+        # Draw glass walls with dashed line pattern
+        if is_glass and not (is_selected or is_sector_selected or is_hovered):
+            # Draw dashed line for glass
+            dx = x2 - x1
+            dy = y2 - y1
+            length = math.sqrt(dx*dx + dy*dy)
+            if length > 0:
+                dash_len = 8
+                gap_len = 4
+                num_segments = int(length / (dash_len + gap_len))
+                if num_segments < 1:
+                    num_segments = 1
+                for i in range(num_segments + 1):
+                    t1 = i * (dash_len + gap_len) / length
+                    t2 = min(1.0, (i * (dash_len + gap_len) + dash_len) / length)
+                    if t1 < 1.0:
+                        sx1 = int(x1 + dx * t1)
+                        sy1 = int(y1 + dy * t1)
+                        sx2 = int(x1 + dx * t2)
+                        sy2 = int(y1 + dy * t2)
+                        pygame.draw.line(self.screen, color, (sx1, sy1), (sx2, sy2), width)
+                
+                # Draw 'G' label at center for glass
+                mid_x = (x1 + x2) / 2
+                mid_y = (y1 + y2) / 2
+                label = self.font_small.render("G", True, (0, 255, 255))
+                self.screen.blit(label, (mid_x - 4, mid_y - 8))
+        else:
+            pygame.draw.line(self.screen, color, (x1, y1), (x2, y2), width)
         
         # Draw direction indicator (small tick)
         if is_selected or is_sector_selected or is_hovered:
@@ -3688,6 +3807,128 @@ class OracularEditor:
         
         return x1, y1, z1
     
+    # ADDED: Color Picker Resources
+    def init_color_picker_resources(self):
+        # 1. Hue Bar (Horizontal) - 240x20
+        self.picker_hue_surf = pygame.Surface((240, 20))
+        for x in range(240):
+            hue = x / 240.0
+            r, g, b = colorsys.hsv_to_rgb(hue, 1, 1)
+            pygame.draw.line(self.picker_hue_surf, (int(r*255), int(g*255), int(b*255)), (x, 0), (x, 20))
+            
+        # 2. SV Box Masks - 240x150
+        # Saturation (Horizontal: White -> Transparent)
+        self.picker_sv_sat_mask = pygame.Surface((240, 150), pygame.SRCALPHA)
+        for x in range(240):
+            # Left: Sat=0 (White). Right: Sat=1 (Color).
+            # So start with White and fade alpha 255->0
+            alpha = int(255 * (1.0 - (x/240.0)))
+            pygame.draw.line(self.picker_sv_sat_mask, (255, 255, 255, alpha), (x, 0), (x, 150))
+            
+        # Value (Vertical: Transparent -> Black)
+        self.picker_sv_val_mask = pygame.Surface((240, 150), pygame.SRCALPHA)
+        for y in range(150):
+            # Top: Val=1 (Color). Bottom: Val=0 (Black).
+            # So start Transparent and fade to Black 0->255
+            alpha = int(255 * (y/150.0))
+            pygame.draw.line(self.picker_sv_val_mask, (0, 0, 0, alpha), (0, y), (240, y))
+
+    def draw_color_picker_widget(self, light, x, y, w):
+        """Draws integrated color picker and handles interaction."""
+        # Calculate current HSV
+        h, s, v = colorsys.rgb_to_hsv(light.r/255.0, light.g/255.0, light.b/255.0)
+        
+        # Dimensions
+        hue_h = 20
+        sv_h = 150
+        margin = 10
+        total_h = sv_h + margin + hue_h
+        
+        # Mouse Interaction check
+        mx, my = pygame.mouse.get_pos()
+        m_down = pygame.mouse.get_pressed()[0]
+        
+        if not m_down:
+            self.picker_active_drag = None
+            
+        # === 1. SV BOX ===
+        sv_rect = pygame.Rect(x, y, w, sv_h)
+        # Background: Current Hue
+        r, g, b = colorsys.hsv_to_rgb(h, 1, 1)
+        pygame.draw.rect(self.screen, (int(r*255), int(g*255), int(b*255)), sv_rect)
+        # Overlays
+        # Scale cached surfaces to fit width
+        if self.picker_sv_sat_mask.get_width() != w:
+             s_mask = pygame.transform.scale(self.picker_sv_sat_mask, (w, sv_h))
+             v_mask = pygame.transform.scale(self.picker_sv_val_mask, (w, sv_h))
+        else:
+             s_mask = self.picker_sv_sat_mask
+             v_mask = self.picker_sv_val_mask
+             
+        self.screen.blit(s_mask, sv_rect)
+        self.screen.blit(v_mask, sv_rect)
+        pygame.draw.rect(self.screen, Colors.SEPARATOR, sv_rect, 1)
+        
+        # Interaction SV
+        if m_down:
+             # Check collision or drag state
+             if (sv_rect.collidepoint(mx, my)) or (self.picker_active_drag == 'sv'):
+                 if self.picker_active_drag is None: self.picker_active_drag = 'sv'
+                 
+                 if self.picker_active_drag == 'sv':
+                     # Update S and V
+                     rel_x = max(0, min(w, mx - x))
+                     rel_y = max(0, min(sv_h, my - y))
+                     
+                     new_s = rel_x / w
+                     new_v = 1.0 - (rel_y / sv_h)
+                     
+                     # Update Light
+                     nr, ng, nb = colorsys.hsv_to_rgb(h, new_s, new_v)
+                     light.r, light.g, light.b = int(nr*255), int(ng*255), int(nb*255)
+                     s, v = new_s, new_v
+        
+        # Cursor SV
+        cx = x + int(s * w)
+        cy_pos = y + int((1.0 - v) * sv_h)
+        pygame.draw.circle(self.screen, (0,0,0), (cx, cy_pos), 6, 2)
+        pygame.draw.circle(self.screen, (255,255,255), (cx, cy_pos), 4, 1)
+
+        # === 2. HUE BAR ===
+        hue_y = y + sv_h + margin
+        hue_rect = pygame.Rect(x, hue_y, w, hue_h)
+        
+        # Scale hue surf
+        if self.picker_hue_surf.get_width() != w:
+             h_surf = pygame.transform.scale(self.picker_hue_surf, (w, hue_h))
+        else:
+             h_surf = self.picker_hue_surf
+             
+        self.screen.blit(h_surf, hue_rect)
+        pygame.draw.rect(self.screen, Colors.SEPARATOR, hue_rect, 1)
+        
+        # Interaction Hue
+        if m_down:
+             if (hue_rect.collidepoint(mx, my)) or (self.picker_active_drag == 'hue'):
+                 if self.picker_active_drag is None: self.picker_active_drag = 'hue'
+                 
+                 if self.picker_active_drag == 'hue':
+                     # Update Hue
+                     rel_x = max(0, min(w, mx - x))
+                     new_h = rel_x / w
+                     
+                     # Update Light
+                     nr, ng, nb = colorsys.hsv_to_rgb(new_h, s, v)
+                     light.r, light.g, light.b = int(nr*255), int(ng*255), int(nb*255)
+                     h = new_h
+                     
+        # Cursor Hue
+        hx = x + int(h * w)
+        pygame.draw.rect(self.screen, (0,0,0), (hx-2, hue_y, 4, hue_h), 1)
+        pygame.draw.rect(self.screen, (255,255,255), (hx-1, hue_y, 2, hue_h))
+        
+        return total_h
+
     def draw_properties_panel(self):
         """Draw right properties panel (Unity-Style Inspector)"""
         panel_width = 280
@@ -3960,7 +4201,46 @@ class OracularEditor:
                  draw_field("Offset U", wall, 'u', wall.u)
                  draw_field("Offset V", wall, 'v', wall.v)
                  
-                 draw_texture_selector("Wall Texture", wall.wt, self.textures, wall, 'wt')
+                 # Glass checkbox for selected wall
+                 draw_section("Material")
+                 wall_is_glass = getattr(wall, 'material', 0) == MATERIAL_GLASS
+                 
+                 checkbox_rect = pygame.Rect(panel_x + 10, cy, 20, 20)
+                 pygame.draw.rect(self.screen, (40, 40, 40), checkbox_rect, border_radius=3)
+                 pygame.draw.rect(self.screen, (60, 60, 60), checkbox_rect, 1, border_radius=3)
+                 if wall_is_glass:
+                     pygame.draw.line(self.screen, (0, 255, 150), (checkbox_rect.x + 4, checkbox_rect.y + 10), 
+                                    (checkbox_rect.x + 8, checkbox_rect.y + 14), 2)
+                     pygame.draw.line(self.screen, (0, 255, 150), (checkbox_rect.x + 8, checkbox_rect.y + 14), 
+                                    (checkbox_rect.x + 16, checkbox_rect.y + 5), 2)
+                 
+                 lbl = self.font_small.render("Is Glass", True, (200, 200, 200))
+                 self.screen.blit(lbl, (panel_x + 35, cy + 2))
+                 self.property_items.append({'rect': pygame.Rect(panel_x, cy, panel_width, 22), 
+                                           'target': wall, 'attr': 'material', 'toggle_wall_glass': True})
+                 cy += 28
+                 
+                 # Show texture if not glass, otherwise show glass properties
+                 if not wall_is_glass:
+                     draw_texture_selector("Wall Texture", wall.wt, self.textures, wall, 'wt')
+                 else:
+                     # Glass properties for selected wall
+                     draw_section("Glass Tint")
+                     draw_field("Red", wall, 'tint_r', getattr(wall, 'tint_r', 220))
+                     draw_field("Green", wall, 'tint_g', getattr(wall, 'tint_g', 230))
+                     draw_field("Blue", wall, 'tint_b', getattr(wall, 'tint_b', 240))
+                     
+                     # Color preview
+                     tint_r = getattr(wall, 'tint_r', 220)
+                     tint_g = getattr(wall, 'tint_g', 230)
+                     tint_b = getattr(wall, 'tint_b', 240)
+                     preview_rect = pygame.Rect(panel_x + 10, cy, panel_width - 20, 25)
+                     pygame.draw.rect(self.screen, (tint_r, tint_g, tint_b), preview_rect, border_radius=3)
+                     pygame.draw.rect(self.screen, Colors.TEXT, preview_rect, 1, border_radius=3)
+                     cy += 32
+                     
+                     draw_section("Transparency")
+                     draw_field("Opacity", wall, 'opacity', getattr(wall, 'opacity', 80))
 
         elif self.selected_enemy is not None and self.selected_enemy < len(self.enemies):
             enemy = self.enemies[self.selected_enemy]
@@ -3993,7 +4273,120 @@ class OracularEditor:
             draw_field("Ceil Z", self, 'prop_sector_z2', self.prop_sector_z2)
             draw_checkbox("Is Stair", self, 'prop_sector_tag')
             
-            draw_texture_selector("Wall Texture", self.prop_wall_texture, self.textures, self, 'prop_wall_texture')
+            # Show wall texture only if NOT glass
+            if self.prop_wall_material != MATERIAL_GLASS:
+                draw_texture_selector("Wall Texture", self.prop_wall_texture, self.textures, self, 'prop_wall_texture')
+            
+            # Glass checkbox
+            draw_section("Material")
+            
+            # Create a checkbox function for glass toggle
+            def toggle_glass():
+                if self.prop_wall_material == MATERIAL_GLASS:
+                    self.prop_wall_material = MATERIAL_SOLID
+                else:
+                    self.prop_wall_material = MATERIAL_GLASS
+            
+            is_glass = self.prop_wall_material == MATERIAL_GLASS
+            
+            # Draw checkbox
+            checkbox_rect = pygame.Rect(panel_x + 10, cy, 20, 20)
+            pygame.draw.rect(self.screen, (40, 40, 40), checkbox_rect, border_radius=3)
+            pygame.draw.rect(self.screen, (60, 60, 60), checkbox_rect, 1, border_radius=3)
+            if is_glass:
+                # Draw checkmark
+                pygame.draw.line(self.screen, (0, 255, 150), (checkbox_rect.x + 4, checkbox_rect.y + 10), 
+                               (checkbox_rect.x + 8, checkbox_rect.y + 14), 2)
+                pygame.draw.line(self.screen, (0, 255, 150), (checkbox_rect.x + 8, checkbox_rect.y + 14), 
+                               (checkbox_rect.x + 16, checkbox_rect.y + 5), 2)
+            
+            label = self.font_small.render("Is Glass Wall", True, (200, 200, 200))
+            self.screen.blit(label, (panel_x + 35, cy + 2))
+            
+            # Add click handler for checkbox
+            full_rect = pygame.Rect(panel_x, cy, panel_width, 22)
+            self.property_items.append({'rect': full_rect, 'target': self, 'attr': 'prop_wall_material', 'toggle_glass': True})
+            cy += 28
+            
+            # Extensive glass menu (only shown when glass is enabled)
+            if is_glass:
+                draw_section("Glass Properties")
+                
+                # Tint preset buttons
+                tint_y = cy
+                preset_names = list(GLASS_TINT_PRESETS.keys())
+                button_w = (panel_width - 20) // len(preset_names)
+                for i, preset in enumerate(preset_names):
+                    btn_x = panel_x + 10 + i * button_w
+                    btn_rect = pygame.Rect(btn_x, cy, button_w - 4, 24)
+                    
+                    is_selected = self.prop_wall_tint_preset == preset
+                    bg_color = GLASS_TINT_PRESETS[preset]
+                    
+                    pygame.draw.rect(self.screen, bg_color, btn_rect, border_radius=3)
+                    if is_selected:
+                        pygame.draw.rect(self.screen, (255, 255, 255), btn_rect, 2, border_radius=3)
+                    else:
+                        pygame.draw.rect(self.screen, (60, 60, 60), btn_rect, 1, border_radius=3)
+                    
+                    # Label (first letter only to save space)
+                    lbl = self.font_small.render(preset[0], True, (0, 0, 0))
+                    self.screen.blit(lbl, (btn_x + button_w // 2 - 4, cy + 4))
+                    
+                    # Add click handler for this preset button
+                    self.property_items.append({
+                        'rect': btn_rect, 
+                        'target': self, 
+                        'attr': 'prop_wall_tint_preset',
+                        'tint_preset': preset
+                    })
+                cy += 30
+                
+                # Draw preset names below
+                for i, preset in enumerate(preset_names):
+                    btn_x = panel_x + 10 + i * button_w
+                    lbl = self.font_small.render(preset, True, (150, 150, 150))
+                    self.screen.blit(lbl, (btn_x, cy))
+                cy += 18
+                
+                # RGB sliders
+                draw_section("Custom Tint (RGB)")
+                draw_field("Red", self, 'prop_wall_tint_r', self.prop_wall_tint_r)
+                draw_field("Green", self, 'prop_wall_tint_g', self.prop_wall_tint_g)
+                draw_field("Blue", self, 'prop_wall_tint_b', self.prop_wall_tint_b)
+                
+                # Color preview
+                preview_rect = pygame.Rect(panel_x + 10, cy, panel_width - 20, 30)
+                pygame.draw.rect(self.screen, (self.prop_wall_tint_r, self.prop_wall_tint_g, self.prop_wall_tint_b), preview_rect, border_radius=5)
+                pygame.draw.rect(self.screen, Colors.TEXT, preview_rect, 1, border_radius=5)
+                
+                # Label on color preview
+                preview_label = self.font_small.render("Color Preview", True, (0, 0, 0))
+                self.screen.blit(preview_label, (preview_rect.x + 5, preview_rect.y + 8))
+                cy += 38
+                
+                # Opacity section
+                draw_section("Transparency")
+                draw_field("Opacity (0-255)", self, 'prop_wall_opacity', self.prop_wall_opacity)
+                
+                # Opacity bar visualization
+                bar_rect = pygame.Rect(panel_x + 10, cy, panel_width - 20, 16)
+                pygame.draw.rect(self.screen, (30, 30, 30), bar_rect, border_radius=3)
+                fill_w = int((self.prop_wall_opacity / 255) * (panel_width - 20))
+                fill_rect = pygame.Rect(panel_x + 10, cy, fill_w, 16)
+                pygame.draw.rect(self.screen, (0, 180, 220), fill_rect, border_radius=3)
+                pygame.draw.rect(self.screen, (60, 60, 60), bar_rect, 1, border_radius=3)
+                
+                # Opacity percentage label
+                opacity_pct = int((self.prop_wall_opacity / 255) * 100)
+                pct_label = self.font_small.render(f"{opacity_pct}%", True, (255, 255, 255))
+                self.screen.blit(pct_label, (bar_rect.x + bar_rect.width // 2 - 12, cy))
+                cy += 24
+                
+                # Glass info
+                draw_section("Info")
+                draw_info("Effect", "Fresnel + Specular")
+                draw_info("Render", "Deferred blend")
 
         elif self.current_tool == Tool.ENTITY:
             draw_header("TOOL: ENTITY")
@@ -4018,12 +4411,11 @@ class OracularEditor:
             draw_field("Radius", light, 'radius', light.radius)
             draw_field("Intensity", light, 'intensity', light.intensity)
             
-            # Color preview box
+            # Color preview box (Clickable)
             color_box_h = 24
-            color_box_rect = pygame.Rect(panel_x + 20, cy, panel_width - 40, color_box_h)
-            pygame.draw.rect(self.screen, (light.r, light.g, light.b), color_box_rect)
-            pygame.draw.rect(self.screen, Colors.SEPARATOR, color_box_rect, 1)
-            cy += color_box_h + 8
+            # Color Picker Widget
+            picker_h = self.draw_color_picker_widget(light, panel_x + 20, cy, panel_width - 40)
+            cy += picker_h + 10
             
             draw_section("Color (RGB)")
             draw_field("Red", light, 'r', light.r)
