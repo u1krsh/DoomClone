@@ -14,7 +14,8 @@
 #define SOUND_PISTOL "sounds/guns/pistol/DSPISTOL.wav"
 #define SOUND_SHOTGUN "sounds/guns/shotgun/DSSHOTGN.wav"
 #define SOUND_CHAINGUN "sounds/guns/chaingun/DCHGUN.wav"
-#define SOUND_PUNCH "sounds/guns/fist/DPUNCH.wav"
+#define SOUND_PUNCH "sounds/guns/DSOOF.wav"
+#define SOUND_PLASMA "sounds/guns/plasma/DSPLASMA.wav"
 #define SOUND_MUSIC_E1M1 "sounds/BG/D_E1M1.wav"
 
 // Volume levels (0.0 - 1.0)
@@ -33,6 +34,7 @@ static ALuint bufferPistol = 0;
 static ALuint bufferShotgun = 0;
 static ALuint bufferChaingun = 0;
 static ALuint bufferPunch = 0;
+static ALuint bufferPlasma = 0;
 static ALuint bufferMusic = 0;
 
 // Sources emit sound
@@ -144,6 +146,7 @@ void initSound(void) {
     bufferShotgun = loadWavFile(SOUND_SHOTGUN);
     bufferChaingun = loadWavFile(SOUND_CHAINGUN);
     bufferPunch = loadWavFile(SOUND_PUNCH);
+    bufferPlasma = loadWavFile(SOUND_PLASMA);
     bufferMusic = loadWavFile(SOUND_MUSIC_E1M1);
 
     // Generate Sources
@@ -175,9 +178,9 @@ void playBuffer(ALuint buffer) {
     if (!soundEnabled || buffer == 0) return;
 
     // Find a non-playing source or pick the next one round-robin
-    // Simple round-robin for now is sufficient for Doom
     ALuint source = sourcesSFX[nextSFXSource];
     
+    alSourceStop(source);
     alSourcei(source, AL_BUFFER, buffer);
     alSourcePlay(source);
 
@@ -188,6 +191,7 @@ void playSoundPistol(void) { playBuffer(bufferPistol); }
 void playSoundShotgun(void) { playBuffer(bufferShotgun); }
 void playSoundChaingun(void) { playBuffer(bufferChaingun); }
 void playSoundPunch(void) { playBuffer(bufferPunch); }
+void playSoundPlasma(void) { playBuffer(bufferPlasma); }
 
 // Generic play for compatibility
 void playSound(const char* filename) {
@@ -196,15 +200,17 @@ void playSound(const char* filename) {
     if (strstr(filename, "PISTOL")) playSoundPistol();
     else if (strstr(filename, "SHOTGN")) playSoundShotgun();
     else if (strstr(filename, "CHGUN")) playSoundChaingun();
-    else if (strstr(filename, "PUNCH")) playSoundPunch();
+    else if (strstr(filename, "PUNCH") || strstr(filename, "OOF")) playSoundPunch();
+    else if (strstr(filename, "PLASMA")) playSoundPlasma();
 }
 
 void playWeaponSound(int weaponType) {
     switch (weaponType) {
-        case 0: playSoundPunch(); break;
-        case 1: playSoundPistol(); break;
-        case 2: playSoundShotgun(); break;
-        case 3: playSoundChaingun(); break;
+        case 0: playSoundPunch(); break;      // WEAPON_FIST
+        case 1: playSoundPistol(); break;     // WEAPON_PISTOL
+        case 2: playSoundShotgun(); break;    // WEAPON_SHOTGUN
+        case 3: playSoundChaingun(); break;   // WEAPON_CHAINGUN
+        case 4: playSoundPlasma(); break;     // WEAPON_PLASMA
         default: playSoundPistol(); break;
     }
 }
@@ -241,6 +247,7 @@ void cleanupSound(void) {
     alDeleteBuffers(1, &bufferShotgun);
     alDeleteBuffers(1, &bufferChaingun);
     alDeleteBuffers(1, &bufferPunch);
+    alDeleteBuffers(1, &bufferPlasma);
     alDeleteBuffers(1, &bufferMusic);
 
     alcMakeContextCurrent(NULL);

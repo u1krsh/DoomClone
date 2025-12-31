@@ -852,7 +852,7 @@ void updateEnemies(int playerX, int playerY, int playerZ, int currentTime) {
 					
 					float aimAngle = atan2((float)(targetX - enemies[i].x), (float)(targetY - enemies[i].y));
 					
-					int projType = PROJ_TYPE_PLASMA;
+					int projType = PROJ_TYPE_BOSSA1; // BOSSA1 default
 					if (enemies[i].enemyType == ENEMY_TYPE_BOSSA2) projType = PROJ_TYPE_BULLET;
 					else if (enemies[i].enemyType == ENEMY_TYPE_BOSSA3) projType = PROJ_TYPE_SHELL;
 					else if (enemies[i].enemyType == ENEMY_TYPE_CACE) projType = PROJ_TYPE_FIREBALL;
@@ -914,7 +914,7 @@ void updateEnemies(int playerX, int playerY, int playerZ, int currentTime) {
 				if (currentTime - enemies[i].lastAttackTime >= ENEMY_ATTACK_COOLDOWN * 0.7f) {
 					float aimAngle = atan2((float)(playerX - enemies[i].x), (float)(playerY - enemies[i].y));
 					
-					int projType = PROJ_TYPE_PLASMA;
+					int projType = PROJ_TYPE_BOSSA1; // BOSSA1 default
 					if (enemies[i].enemyType == ENEMY_TYPE_BOSSA2) projType = PROJ_TYPE_BULLET;
 					else if (enemies[i].enemyType == ENEMY_TYPE_BOSSA3) projType = PROJ_TYPE_SHELL;
 					else if (enemies[i].enemyType == ENEMY_TYPE_CACE) projType = PROJ_TYPE_FIREBALL;

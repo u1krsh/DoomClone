@@ -277,15 +277,11 @@ void drawGates(int playerX, int playerY, int playerZ, int playerAngle,
         int gateBottom = g->z_current;  // Animated position
         int gateTop = gateBottom + 40;  // Gate is 40 units tall
         
-        // Apply look adjustment (same as walls)
-        float lookAdjust1 = (playerAngle > 0) ? (playerAngle * wy1) / 32.0f : 0;
-        float lookAdjust2 = (playerAngle > 0) ? (playerAngle * wy2) / 32.0f : 0;
-        
-        // Project Y coordinates for both depth points
-        int screenBot1 = SH/2 + (int)((playerZ - gateBottom) * 200 / wy1);
-        int screenTop1 = SH/2 + (int)((playerZ - gateTop) * 200 / wy1);
-        int screenBot2 = SH/2 + (int)((playerZ - gateBottom) * 200 / wy2);
-        int screenTop2 = SH/2 + (int)((playerZ - gateTop) * 200 / wy2);
+        // Project Y coordinates for both depth points (no look adjustment needed - handled by main renderer)
+        int screenBot1 = SH/2 - (int)((gateBottom - playerZ) * 200 / wy1);
+        int screenTop1 = SH/2 - (int)((gateTop - playerZ) * 200 / wy1);
+        int screenBot2 = SH/2 - (int)((gateBottom - playerZ) * 200 / wy2);
+        int screenTop2 = SH/2 - (int)((gateTop - playerZ) * 200 / wy2);
         
         // Ensure left-to-right rendering order
         if (screenX1 > screenX2) {

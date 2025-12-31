@@ -15,7 +15,7 @@
 #define SCRPOS_H GSLH / 8 
 #define SCRPOS_W GSLW / 5
 #define M_PI 3.14159265358979323846  /* pi */
-
+	
 // Consolidated texture includes
 #include "textures/all_textures.h"
 #include "textures/skybox.h"
@@ -104,6 +104,9 @@ void toggleMouseLook();  // Add forward declaration for mouse look toggle
 // Mouse look state (needs to be declared before mouseClick uses it)
 int lastMouseX = -1;
 int mouseEnabled = 0;
+
+// Background music state (needs to be global so it can be reset on respawn)
+int musicStarted = 0;
 
 void load()
 {
@@ -333,7 +336,8 @@ void movePl()
 	
 	// Only update position if no collision (and not in godMode or noclip)
 	if (!godMode && !noclip) {
-		if (!checkWallCollision(newX, newY)) {
+		// Check both wall and gate collisions
+		if (!checkWallCollision(newX, newY) && !checkGateCollision(newX, newY, P.z)) {
 			P.x = newX;
 			P.y = newY;
 			
@@ -355,13 +359,13 @@ void movePl()
 			}
 		}
 		else {
-			// Try sliding along walls by testing X and Y movement separately
-			if (!checkWallCollision(newX, oldY)) {
+			// Try sliding along walls/gates by testing X and Y movement separately
+			if (!checkWallCollision(newX, oldY) && !checkGateCollision(newX, oldY, P.z)) {
 				P.x = newX;
 				int s = getSector(P.x, P.y);
 				if (s != -1 && S[s].z1 >= (P.z - 20)) P.z = S[s].z1 + 20;
 			}
-			else if (!checkWallCollision(oldX, newY)) {
+			else if (!checkWallCollision(oldX, newY) && !checkGateCollision(oldX, newY, P.z)) {
 				P.y = newY;
 				int s = getSector(P.x, P.y);
 				if (s != -1 && S[s].z1 >= (P.z - 20)) P.z = S[s].z1 + 20;
@@ -1903,7 +1907,6 @@ void display() {
 			drawScreenMelt(pixel, SW, SH);
 			
 			// Start background music once after screen melt completes
-			static int musicStarted = 0;
 			if (!musicStarted && isMeltComplete()) {
 				playBackgroundMusic();
 				musicStarted = 1;
@@ -1968,6 +1971,10 @@ void KeysDown(unsigned char key, int x, int y)
 			initWeapons();
 			load();
 			startScreenMelt();
+			
+			// Stop and reset background music so it restarts after screen melt
+			stopBackgroundMusic();
+			musicStarted = 0;
 		}
 		return;
 	}

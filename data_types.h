@@ -68,6 +68,8 @@ typedef struct {
 #define PROJ_TYPE_BULLET 1
 #define PROJ_TYPE_SHELL 2
 #define PROJ_TYPE_FIREBALL 3
+#define PROJ_TYPE_BOSSA1 4
+#define PROJ_TYPE_PLASMA_IMP 5
 
 #define PROJ_RADIUS 4
 

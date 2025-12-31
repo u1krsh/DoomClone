@@ -124,6 +124,7 @@ class UndoManager:
         self.editor.draw_canvas()
         self.editor.draw_timeline()
 
+
 class ModernTextureEditor:
     def __init__(self, root):
         self.root = root
@@ -787,16 +788,42 @@ class ModernTextureEditor:
         
     def load_image(self):
         """Load image files - supports multiple selection for animation"""
-        filenames = filedialog.askopenfilenames(
-            title="Select Images (Multiple for animation)",
-            filetypes=[
-                ("Image Files", "*.png *.jpg *.jpeg *.bmp"),
-                ("PNG Files", "*.png"),
-                ("JPEG Files", "*.jpg *.jpeg"),
-                ("BMP Files", "*.bmp"),
-                ("All Files", "*.*")
-            ]
-        )
+        import subprocess
+        
+        try:
+            # Use kdialog for native KDE file picker (works with Dolphin)
+            result = subprocess.run([
+                'kdialog',
+                '--getopenfilename',
+                os.path.expanduser('~'),
+                'Image Files (*.png *.jpg *.jpeg *.bmp)|*.png *.jpg *.jpeg *.bmp',
+                '--multiple',
+                '--separate-output',
+                '--title', 'Select Images (Multiple for animation)'
+            ], capture_output=True, text=True)
+            
+            if result.returncode == 0 and result.stdout.strip():
+                filenames = result.stdout.strip().split('\n')
+            else:
+                return  # User cancelled
+                
+        except FileNotFoundError:
+            # Fallback to tkinter if kdialog not available
+            messagebox.showwarning("KDialog Not Found", 
+                "kdialog not found. Install it with: sudo apt-get install kdialog\n\nUsing fallback dialog...")
+            filenames = filedialog.askopenfilenames(
+                title="Select Images (Multiple for animation)",
+                filetypes=[
+                    ("Image Files", "*.png *.jpg *.jpeg *.bmp"),
+                    ("PNG Files", "*.png"),
+                    ("JPEG Files", "*.jpg *.jpeg"),
+                    ("BMP Files", "*.bmp"),
+                    ("All Files", "*.*")
+                ]
+            )
+            if not filenames:
+                return
+        
         if filenames:
             try:
                 self.frames = []
