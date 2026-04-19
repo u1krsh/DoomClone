@@ -1,7 +1,7 @@
 #ifndef AUTOMAP_H
 #define AUTOMAP_H
 
-// Automap Module
+// Automap Module for DoomClone
 // Provides minimap/automap functionality for navigation
 
 // Forward declarations for external dependencies
