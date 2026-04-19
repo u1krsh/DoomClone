@@ -40,7 +40,7 @@ typedef struct {
 // Initialize automap system and clear state variables
 void initAutomap(void);
 
-// Update automap animation
+// Update automap animation state and slide progress
 void updateAutomap(void);
 
 // Draw automap on screen
