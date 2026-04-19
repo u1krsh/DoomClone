@@ -37,7 +37,7 @@ typedef struct {
 	float sin[360];
 } MathTable;
 
-// Initialize automap system
+// Initialize automap system and clear state variables
 void initAutomap(void);
 
 // Update automap animation
