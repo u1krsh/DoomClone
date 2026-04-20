@@ -55,7 +55,7 @@ void drawAutomap(
 	const MathTable* mathTable
 );
 
-// Toggle automap visibility
+// Toggle automap visibility state (starts/stops sliding animation)
 void toggleAutomap(void);
 
 // Check if automap is active
