@@ -17,7 +17,7 @@ void initAutomap(void) {
 	automap.mapSlidePos = 0.0f;
 }
 
-// Update automap animation
+// Update automap animation transitions based on active state
 void updateAutomap(void) {
 	if (!automap.mapAnimating) return;
 	
