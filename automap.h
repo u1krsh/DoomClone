@@ -58,7 +58,7 @@ void drawAutomap(
 // Toggle automap visibility state (starts/stops sliding animation)
 void toggleAutomap(void);
 
-// Check if automap is active
+// Check if automap is active and visible to player
 int isAutomapActive(void);
 
 // Check if automap is animating
