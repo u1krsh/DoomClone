@@ -11,6 +11,7 @@ static AutomapState automap;
 
 // Initialize automap system
 void initAutomap(void) {
+	// Reset all state members to default inactive status
 	automap.mapActive = 0;
 	automap.mapAnimating = 0;
 	automap.mapSlidePos = 0.0f;
