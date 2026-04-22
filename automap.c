@@ -22,7 +22,7 @@ void updateAutomap(void) {
 	if (!automap.mapAnimating) return;
 	
 	if (automap.mapActive) {
-		// Slide down
+		// Slide down from top of screen
 		automap.mapSlidePos += 0.15f;
 		if (automap.mapSlidePos >= 1.0f) {
 			automap.mapSlidePos = 1.0f;
