@@ -29,7 +29,7 @@ void updateAutomap(void) {
 			automap.mapAnimating = 0;
 		}
 	} else {
-		// Slide up
+		// Slide up to hide
 		automap.mapSlidePos -= 0.15f;
 		if (automap.mapSlidePos <= 0.0f) {
 			automap.mapSlidePos = 0.0f;
