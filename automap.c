@@ -64,7 +64,7 @@ void drawAutomap(
 	// Don't draw if too small
 	if (mapHeight < 10) return;
 	
-	int mapScale = 4; // Scale down factor for the map
+	const int mapScale = 4; // Scale down factor for the map rendering
 	
 	// Draw map background (black)
 	int x, y;
