@@ -66,7 +66,7 @@ void drawAutomap(
 	
 	const int mapScale = 4; // Scale down factor for the map rendering
 	
-	// Draw map background (black)
+	// Draw map background (black solid block)
 	int x, y;
 	for (y = mapY; y < screenHeight; y++) {
 		for (x = 0; x < screenWidth; x++) {
