@@ -70,7 +70,7 @@ void drawAutomap(
 	int x, y;
 	for (y = mapY; y < screenHeight; y++) {
 		for (x = 0; x < screenWidth; x++) {
-			pixelFunc(x, y, 0, 0, 0); // Black background
+			pixelFunc(x, y, 0, 0, 0); // Solid black pixel background
 		}
 	}
 	
