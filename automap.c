@@ -74,7 +74,7 @@ void drawAutomap(
 		}
 	}
 	
-	// Draw bottom border (red line - 2 pixels thick)
+	// Draw bottom border outline (red line - 2 pixels thick)
 	for (x = 0; x < screenWidth; x++) {
 		pixelFunc(x, mapY, 255, 0, 0); // Red border
 		if (mapY + 1 < screenHeight) {
