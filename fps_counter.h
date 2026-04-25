@@ -1,7 +1,7 @@
 #ifndef FPS_COUNTER_H
 #define FPS_COUNTER_H
 
-// FPS Counter Module
+// FPS Counter Module for Performance Monitoring
 // Provides frame rate tracking and display functionality
 
 // Initialize the FPS counter
