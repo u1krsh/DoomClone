@@ -134,7 +134,7 @@ void drawAutomap(
 		pixelFunc(centerX + x, centerY - 2, 255, 0, 0);
 	}
 	
-	// Draw direction indicator (thicker yellow line pointing in player's direction)
+	// Draw direction indicator line (thicker yellow line pointing in player's direction)
 	int dirLen = 12;
 	int dirX = centerX + (int)(mathTable->sin[player->a] * dirLen);
 	int dirY = centerY + (int)(mathTable->cos[player->a] * dirLen);
