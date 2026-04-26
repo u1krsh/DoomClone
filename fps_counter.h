@@ -4,7 +4,7 @@
 // FPS Counter Module for Performance Monitoring
 // Provides frame rate tracking and display functionality
 
-// Initialize the FPS counter
+// Initialize the FPS counter system and reset state timers
 void initFPSCounter(void);
 
 // Update FPS counter (call once per frame)
