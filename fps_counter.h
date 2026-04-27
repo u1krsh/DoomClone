@@ -16,7 +16,7 @@ void drawFPSCounter(void (*pixelFunc)(int, int, int, int, int), int screenHeight
 // Toggle FPS display visibility
 void toggleFPSDisplay(void);
 
-// Get current FPS value
+// Get current frame-rate value as integer
 int getCurrentFPS(void);
 
 // Check if FPS display is enabled
