@@ -7,7 +7,7 @@
 // Initialize the FPS counter system and reset state timers
 void initFPSCounter(void);
 
-// Update FPS counter (call once per frame)
+// Update FPS counter calculations (call once per frame)
 void updateFPSCounter(int currentTime);
 
 // Draw FPS display on screen
