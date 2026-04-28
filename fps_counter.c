@@ -9,7 +9,7 @@ typedef struct {
 	int fps;           // Current FPS
 	int frameCount;    // Frame counter
 	int fpsTimer;      // Timer for FPS calculation
-	int showFPS;       // Toggle FPS display (now also controls debug overlay)
+	int showFPS;       // Toggle FPS display (also controls full debug overlay)
 } FPSCounter;
 
 static FPSCounter fpsCounter;
