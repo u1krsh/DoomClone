@@ -16,6 +16,7 @@ static FPSCounter fpsCounter;
 
 // Initialize the FPS counter
 void initFPSCounter(void) {
+	// Initial state setup for tracking frames per second
 	fpsCounter.fps = 0;
 	fpsCounter.frameCount = 0;
 	fpsCounter.fpsTimer = 0;
