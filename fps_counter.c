@@ -27,7 +27,7 @@ void initFPSCounter(void) {
 void updateFPSCounter(int currentTime) {
 	fpsCounter.frameCount++;
 	
-	if (currentTime - fpsCounter.fpsTimer >= 1000) { // Update FPS every second
+	if (currentTime - fpsCounter.fpsTimer >= 1000) { // Recalculate frame rate once per second
 		fpsCounter.fps = fpsCounter.frameCount;
 		fpsCounter.frameCount = 0;
 		fpsCounter.fpsTimer = currentTime;
