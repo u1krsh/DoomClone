@@ -42,7 +42,7 @@ void drawFPSCounter(void (*pixelFunc)(int, int, int, int, int), int screenHeight
 	char fpsText[16];
 	snprintf(fpsText, sizeof(fpsText), "FPS: %d", fpsCounter.fps);
 	
-	// Draw using console font in top-left corner (white text)
+	// Draw using console font in top-left corner (white text offset from top)
 	drawString(5, screenHeight - 10, fpsText, 255, 255, 255, pixelFunc);
 }
 
