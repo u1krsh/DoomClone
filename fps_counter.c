@@ -46,7 +46,7 @@ void drawFPSCounter(void (*pixelFunc)(int, int, int, int, int), int screenHeight
 	drawString(5, screenHeight - 10, fpsText, 255, 255, 255, pixelFunc);
 }
 
-// Toggle FPS display visibility
+// Toggle visibility of the FPS counter overlay
 void toggleFPSDisplay(void) {
 	fpsCounter.showFPS = !fpsCounter.showFPS;
 }
