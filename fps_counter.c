@@ -56,7 +56,7 @@ int getCurrentFPS(void) {
 	return fpsCounter.fps;
 }
 
-// Check if FPS display is enabled
+// Check if FPS display overlay has been toggled on
 int isFPSDisplayEnabled(void) {
 	return fpsCounter.showFPS;
 }
