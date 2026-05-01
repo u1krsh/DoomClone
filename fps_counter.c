@@ -51,7 +51,7 @@ void toggleFPSDisplay(void) {
 	fpsCounter.showFPS = !fpsCounter.showFPS;
 }
 
-// Get current FPS value
+// Return the most recently calculated frame rate
 int getCurrentFPS(void) {
 	return fpsCounter.fps;
 }
