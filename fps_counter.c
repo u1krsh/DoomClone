@@ -88,7 +88,7 @@ static void drawDebugLine(void (*pixelFunc)(int, int, int, int, int),
 	}
 }
 
-// Draw comprehensive debug overlay with crosshair, coordinates, hitboxes, and enemy activation radii
+// Draw comprehensive real-time debug overlay on top of rendering buffer
 void drawDebugOverlay(void (*pixelFunc)(int, int, int, int, int), int screenWidth, int screenHeight, 
                       int playerX, int playerY, int playerZ, int playerAngle, int playerLook) {
 	if (!fpsCounter.showFPS) return;
