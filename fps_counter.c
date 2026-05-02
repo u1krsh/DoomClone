@@ -108,7 +108,7 @@ void drawDebugOverlay(void (*pixelFunc)(int, int, int, int, int), int screenWidt
 	// Center dot (white) - single pixel only
 	pixelFunc(centerX, centerY, 255, 255, 255);
 	
-	// Draw player coordinates and info
+	// Render player coordinates and direction details
 	char debugText[128];
 	int yPos = screenHeight - 10;
 	
