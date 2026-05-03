@@ -117,7 +117,7 @@ void drawDebugOverlay(void (*pixelFunc)(int, int, int, int, int), int screenWidt
 	drawString(5, yPos, debugText, 255, 255, 255, pixelFunc);
 	yPos -= 12;
 	
-	// Player X position (red)
+	// Display Player X position coordinate (red)
 	snprintf(debugText, sizeof(debugText), "X: %d", playerX);
 	drawString(5, yPos, debugText, 255, 100, 100, pixelFunc);
 	yPos -= 12;
