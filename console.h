@@ -5,7 +5,7 @@
 
 #define MAX_CONSOLE_INPUT 128 // Max length of a single input command string
 #define CONSOLE_HEIGHT_PERCENT 0.25f  // Console height as percentage of screen (25%)
-#define CONSOLE_HISTORY_SIZE 10
+#define CONSOLE_HISTORY_SIZE 10 // Store up to last 10 commands
 #define CONSOLE_MESSAGE_LINES 5  // Number of message lines to display
 
 typedef struct {
