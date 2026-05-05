@@ -23,7 +23,7 @@ typedef struct {
     int messageCount;     // Number of messages
 } Console;
 
-// Global console instance
+// External reference to the global console state object
 extern Console console;
 
 // Global game state variables
