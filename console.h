@@ -26,7 +26,7 @@ typedef struct {
 // External reference to the global console state object
 extern Console console;
 
-// Global game state variables
+// External references to cheat configuration states
 extern int godMode;
 extern int noclip;
 
