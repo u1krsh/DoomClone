@@ -27,6 +27,7 @@ extern void healPlayer(int amount);
 extern void addArmor(int amount);
 
 void initConsole(int screenWidth, int screenHeight) {
+    // Set default hidden positioning
     console.active = 0;
     console.slidePos = 0.0f;
     console.animating = 0;
