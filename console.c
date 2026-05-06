@@ -8,7 +8,7 @@
 // Global console instance
 Console console;
 
-// Global game state variables
+// Global game state variables initialized to inactive defaults
 int godMode = 0;
 int noclip = 0;
 
