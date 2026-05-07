@@ -37,7 +37,7 @@ void initConsole(int screenWidth, int screenHeight) {
     console.inputPos = 0;
     console.messageCount = 0;
     
-    // Clear message history
+    // Reset buffer string lines
     for (int i = 0; i < CONSOLE_MESSAGE_LINES; i++) {
         console.messages[i][0] = '\0';
     }
