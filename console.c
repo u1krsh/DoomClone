@@ -78,6 +78,7 @@ void drawConsole(int screenWidth, int screenHeight) {
     // You'll need to pass the pixel drawing function to this
 }
 
+// Add character to current input buffer if printable
 void consoleAddChar(char c) {
     if (console.inputPos < MAX_CONSOLE_INPUT - 1 && isprint(c)) {
         console.input[console.inputPos] = c;
