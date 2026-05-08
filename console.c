@@ -45,6 +45,7 @@ void initConsole(int screenWidth, int screenHeight) {
     consolePrint("Console initialized. Type 'help' for commands.");
 }
 
+// Toggle sliding state of the command console
 void toggleConsole() {
     console.active = !console.active;
     console.animating = 1;
