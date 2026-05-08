@@ -52,7 +52,8 @@ void toggleConsole() {
     console.historyIndex = -1; // Reset history browsing when toggling
 }
 
-void updateConsole() {
+// Perform transition steps for sliding console animation
+void updateConsole(void) {
     if (console.animating) {
         if (console.active) {
             console.slidePos += 0.15f;
