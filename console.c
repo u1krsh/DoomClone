@@ -87,6 +87,7 @@ void consoleAddChar(char c) {
     }
 }
 
+// Remove last character from the active command input buffer
 void consoleBackspace() {
     if (console.inputPos > 0) {
         console.inputPos--;
