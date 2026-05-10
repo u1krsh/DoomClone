@@ -95,7 +95,7 @@ void consoleBackspace() {
     }
 }
 
-// Print message to console
+// Print text message line onto the console history log
 void consolePrint(const char* message) {
     if (console.messageCount < CONSOLE_MESSAGE_LINES) {
         // Add new message
