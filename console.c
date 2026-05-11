@@ -110,7 +110,7 @@ void consolePrint(const char* message) {
     }
 }
 
-// Trim whitespace from string
+// Helper to trim trailing and leading spaces from strings
 void trim(char* str) {
     int start = 0;
     int end = strlen(str) - 1;
