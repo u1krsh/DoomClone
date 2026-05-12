@@ -129,7 +129,7 @@ void trim(char* str) {
     str[i] = '\0';
 }
 
-// Convert string to lowercase
+// Helper to convert character buffer to lowercase in-place
 void toLowerCase(char* str) {
     for (int i = 0; str[i]; i++) {
         str[i] = tolower(str[i]);
