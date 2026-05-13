@@ -136,7 +136,7 @@ void toLowerCase(char* str) {
     }
 }
 
-// Parse command and argument
+// Split console input into separate command and argument tokens
 void parseCommand(const char* input, char* cmd, char* arg) {
     cmd[0] = '\0';
     arg[0] = '\0';
