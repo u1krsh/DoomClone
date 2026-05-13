@@ -192,7 +192,7 @@ void consoleExecuteCommand() {
     
     char response[MAX_CONSOLE_INPUT];
     
-    // Execute command
+    // Command routing mapping logic
     if (strcmp(command, "godmode") == 0 || strcmp(command, "god") == 0) {
         godMode = !godMode;
         if (godMode) {
