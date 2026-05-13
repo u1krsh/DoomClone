@@ -177,7 +177,7 @@ void consoleExecuteCommand() {
         strncpy(console.history[CONSOLE_HISTORY_SIZE - 1], console.input, MAX_CONSOLE_INPUT);
     }
     
-    // Process command
+    // Create temporary buffers for parsing tokens
     char command[MAX_CONSOLE_INPUT];
     char argument[MAX_CONSOLE_INPUT];
     
