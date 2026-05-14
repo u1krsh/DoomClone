@@ -344,7 +344,7 @@ void consoleExecuteCommand() {
         consolePrint("  text_edit - Launch texture editor");
         consolePrint("  map_edit - Launch map editor");
     }
-    else if (strcmp(command, "clear") == 0) {
+    else if (strcmp(command, "clear") == 0 || strcmp(command, "cls") == 0) {
         // Clear all messages
         for (int i = 0; i < CONSOLE_MESSAGE_LINES; i++) {
             console.messages[i][0] = '\0';
