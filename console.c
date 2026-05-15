@@ -328,7 +328,7 @@ void consoleExecuteCommand() {
             consolePrint("You are not dead");
         }
     }
-    else if (strcmp(command, "help") == 0) {
+    else if (strcmp(command, "help") == 0 || strcmp(command, "?") == 0) {
         consolePrint("=== CHEAT COMMANDS ===");
         consolePrint("  god/godmode - Toggle invincibility");
         consolePrint("  noclip - Walk through walls");
