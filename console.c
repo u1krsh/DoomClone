@@ -329,7 +329,7 @@ void consoleExecuteCommand() {
         }
     }
     else if (strcmp(command, "help") == 0 || strcmp(command, "?") == 0) {
-        consolePrint("=== CHEAT COMMANDS ===");
+        consolePrint("=== CHEAT CODES ===");
         consolePrint("  god/godmode - Toggle invincibility");
         consolePrint("  noclip - Walk through walls");
         consolePrint("  notarget - Toggle enemy AI");
