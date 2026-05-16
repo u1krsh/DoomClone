@@ -377,7 +377,7 @@ void consoleExecuteCommand() {
         consolePrint("Type 'help' for available commands");
     }
     
-    // Clear input
+    // Reset command line inputs
     console.input[0] = '\0';
     console.inputPos = 0;
 }
