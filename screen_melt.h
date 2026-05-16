@@ -1,7 +1,7 @@
 #ifndef SCREEN_MELT_H
 #define SCREEN_MELT_H
 
-// Screen melt effect (Doom-style)
+// Screen melt effect (classic Doom-style)
 // Modular implementation for screen transitions
 
 // Initialize the screen melt system
