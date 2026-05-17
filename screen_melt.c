@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #define _CRT_SECURE_NO_WARNINGS
+#include <string.h>
 #include "screen_melt.h"
 #include "textures/main_screen.h"  // Include main screen texture
 
