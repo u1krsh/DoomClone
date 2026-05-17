@@ -34,7 +34,7 @@ compile_commands.json
 !DoomClone.exe # Keep the main executable if desired, but usually ignored
 !glut32.dll # Keep external dependencies if they are in the root
 
-# VS Code
+# VS Code configurations
 .vscode/
 
 # System
