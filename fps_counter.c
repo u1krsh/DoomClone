@@ -141,3 +141,5 @@ void drawDebugOverlay(void (*pixelFunc)(int, int, int, int, int), int screenWidt
 	snprintf(debugText, sizeof(debugText), "Look: %d", playerLook);
 	drawString(5, yPos, debugText, 100, 255, 255, pixelFunc);
 }
+
+// qol update 54
