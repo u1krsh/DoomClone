@@ -190,3 +190,5 @@ int isAutomapActive(void) {
 int isAutomapAnimating(void) {
 	return automap.mapAnimating;
 }
+
+// qol update 55
